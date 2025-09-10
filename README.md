@@ -8,7 +8,7 @@ Buscamos optimizar la experiencia de viaje, aumentar la eficiencia del servicio 
 
 ---
 
-## 🚀 Estructura del Repositorio
+##  Estructura del Repositorio
 
 * `/analytics`: Contiene el microservicio en **Python/Flask** para el análisis de vibraciones y la detección predictiva de fallos en las cabinas.
 * `/backend`: API principal, gestión de usuarios, rutas, estaciones y lógica de negocio, desarrollada en **Node.js** bajo un patrón MVC.
@@ -16,7 +16,7 @@ Buscamos optimizar la experiencia de viaje, aumentar la eficiencia del servicio 
 
 ---
 
-## 📋 Funcionalidades Clave
+##  Funcionalidades Clave
 
 El desarrollo de esta plataforma se centra en los siguientes módulos principales:
 
@@ -27,7 +27,7 @@ El desarrollo de esta plataforma se centra en los siguientes módulos principale
 
 ---
 
-## 🛠️ Cómo Empezar
+##  Cómo Empezar
 
 *[Esta sección la deben completar ustedes con las instrucciones de instalación, variables de entorno y comandos para levantar el proyecto localmente.]*
 
@@ -38,7 +38,7 @@ El desarrollo de esta plataforma se centra en los siguientes módulos principale
 
 ---
 
-## 📞 Contactos del Proyecto
+##  Contactos del Proyecto
 
 * **Líder de Analítica:** @tu-usuario-de-github
 * **Líder de Backend:** @usuario-lider-backend
