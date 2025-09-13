@@ -1,12 +1,12 @@
 # Urban Flow - Documentación Inicial
 
-## 🚠 Visión General
+##  Visión General
 
 **Urban Flow** es una plataforma integral diseñada para la gestión inteligente, monitoreo en tiempo real y análisis predictivo de sistemas de **metrocable por cabinas**. Centralizamos toda la información operativa, facilitando visualización avanzada de datos, analítica procesable e integración de modelos de IA para predecir y prevenir fallos operativos.
 
 ---
 
-## 📂 Arquitectura del Proyecto
+##  Arquitectura del Proyecto
 
 ```console
 urban-flow/
@@ -32,7 +32,7 @@ urban-flow/
 
 ---
 
-## 🧩 Componentes Principales
+##  Componentes Principales
 
 ### 1. Gestión de Usuarios y Roles
 Sistema completo de administración de acceso con:
@@ -57,7 +57,7 @@ Plataforma cartográfica especializada con:
 
 ---
 
-## ✅ Funcionalidades Clave
+##  Funcionalidades Clave
 
 ### Gestión de Accesos (RF1–RF10)
 - Registro y administración segura de usuarios
@@ -79,7 +79,7 @@ Plataforma cartográfica especializada con:
 
 ---
 
-## 🛠️ Stack Tecnológico
+##  Stack Tecnológico
 
 ### Arquitectura Principal
 - **Backend**: Node.js con arquitectura MVC
@@ -96,7 +96,7 @@ Plataforma cartográfica especializada con:
 
 ---
 
-## 🗄️ Esquema de Base de Datos
+##  Esquema de Base de Datos
 
 ### Entidades Principales
 - **usuarios**: Gestión de identidades y acceso al sistema
@@ -187,7 +187,7 @@ CREATE TABLE mediciones (
 
 ---
 
-## 📅 Cronograma de Implementación
+##  Cronograma de Implementación
 
 ### Semanas 1-2: Fundación
 - Definición arquitectónica completa
@@ -233,16 +233,16 @@ CREATE TABLE mediciones (
 
 ---
 
-## 👥 Equipo Urban Flow
+##  Equipo Urban Flow
 
 **Urban Flow Analytics S.A.S.**
 *Innovación en movilidad urbana sostenible*
 
 Somos especialistas en sistemas de transporte por cable, comprometidos con:
-- ✅ Mejora continua de la movilidad urbana
-- ✅ Implementación de soluciones basadas en datos
-- ✅ Innovación tecnológica para la seguridad operativa
-- ✅ Desarrollo sostenible de infraestructuras urbanas
+-  Mejora continua de la movilidad urbana
+-  Implementación de soluciones basadas en datos
+-  Innovación tecnológica para la seguridad operativa
+-  Desarrollo sostenible de infraestructuras urbanas
 
 **Misión**: Transformar el transporte urbano mediante tecnología inteligente que prioriza la seguridad, eficiencia y experiencia del usuario.
 
