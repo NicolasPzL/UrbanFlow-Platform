@@ -1,0 +1,38 @@
+{
+  "name": "urbanflow-platform",
+  "version": "1.0.0",
+  "description": "Plataforma digital integral para la gestión, monitoreo y análisis del sistema de metro cable de UrbanFlow Analytics S.A.S.\r # Plataforma de Movilidad Inteligente - UrbanFlow",
+  "main": "app.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NicolasPzL/UrbanFlow-Platform.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/NicolasPzL/UrbanFlow-Platform/issues"
+  },
+  "homepage": "https://github.com/NicolasPzL/UrbanFlow-Platform#readme",
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.1",
+    "mysql2": "^3.15.0",
+    "sequelize": "^6.37.7"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
