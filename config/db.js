@@ -6,13 +6,15 @@ const { Pool } = pkg;
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'urbanflow',
+  database: process.env.DB_NAME || 'esquema_urbanflow',
   password: process.env.DB_PASSWORD || 'password',
   port: process.env.DB_PORT || 5432,
   // Configuraciones adicionales para producción
   max: 20, // máximo de conexiones en el pool
   idleTimeoutMillis: 30000, // tiempo antes de cerrar conexiones inactivas
-  connectionTimeoutMillis: 2000, // tiempo máximo para obtener una conexión
+  connectionTimeoutMillis: 5000, // tiempo máximo para obtener una conexión (aumentado)
+  // Configuraciones adicionales para debugging
+  ssl: false, // Deshabilitar SSL para desarrollo local
 });
 
 // Manejo de errores del pool
