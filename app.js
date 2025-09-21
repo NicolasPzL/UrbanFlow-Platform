@@ -13,8 +13,10 @@ dotenv.config();
 import userRoutes from './routes/userRoutes.js';
 
 // Importar middlewares
-import { requireAuth, optionalAuth } from './middlewares/auth.js';
-import { verifyToken, isAdmin } from './middlewares/authMiddleware.js';
+import { requireAuth, optionalAuth, requireRole } from './middlewares/auth.js';
+import { validateUser, validateLogin, validateId } from './middlewares/validation.js';
+import { loginLimiter, apiLimiter } from './middlewares/rateLimiter.js';
+import { sanitizeQuery, sanitizeBody } from './middlewares/sanitize.js';
 
 // Importar controladores
 import * as userController from './controllers/userCotroller.js';
@@ -64,6 +66,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
+// Sanitización global
+app.use(sanitizeQuery);
+app.use(sanitizeBody);
+
+// Rate limiting global
+app.use(apiLimiter);
+
 // =============================================================================
 // RUTAS PÚBLICAS
 // =============================================================================
@@ -79,8 +88,15 @@ app.get('/health', (req, res) => {
 });
 
 // Autenticación
-app.post('/api/auth/login', authController.login);
-app.post('/api/auth/logout', authController.logout);
+app.post('/api/auth/login', 
+  loginLimiter, 
+  validateLogin, 
+  authController.login
+);
+app.post('/api/auth/logout', 
+  requireAuth, 
+  authController.logout
+);
 
 // =============================================================================
 // RUTAS PROTEGIDAS (requieren autenticación)
@@ -90,17 +106,60 @@ app.post('/api/auth/logout', authController.logout);
 app.get('/api/auth/me', requireAuth, authController.me);
 
 // Gestión de usuarios (solo admin)
-app.get('/api/users', requireAuth, userController.listUsers);
-app.get('/api/users/:id', requireAuth, userController.getUser);
-app.post('/api/users', requireAuth, userController.createUser);
-app.put('/api/users/:id', requireAuth, userController.updateUser);
-app.delete('/api/users/:id', requireAuth, userController.removeUser);
+app.get('/api/users', 
+  requireAuth, 
+  requireRole('administrador'), 
+  userController.listUsers
+);
+app.get('/api/users/:id', 
+  requireAuth, 
+  requireRole('administrador'), 
+  validateId, 
+  userController.getUser
+);
+app.post('/api/users', 
+  requireAuth, 
+  requireRole('administrador'), 
+  validateUser, 
+  userController.createUser
+);
+app.put('/api/users/:id', 
+  requireAuth, 
+  requireRole('administrador'), 
+  validateId, 
+  validateUser, 
+  userController.updateUser
+);
+app.delete('/api/users/:id', 
+  requireAuth, 
+  requireRole('administrador'), 
+  validateId, 
+  userController.removeUser
+);
 
 // Gestión de roles (solo admin)
-app.get('/api/roles', requireAuth, roleController.list);
-app.post('/api/roles', requireAuth, roleController.create);
-app.put('/api/roles/:id', requireAuth, roleController.update);
-app.delete('/api/roles/:id', requireAuth, roleController.softDelete);
+app.get('/api/roles', 
+  requireAuth, 
+  requireRole('administrador'), 
+  roleController.list
+);
+app.post('/api/roles', 
+  requireAuth, 
+  requireRole('administrador'), 
+  roleController.create
+);
+app.put('/api/roles/:id', 
+  requireAuth, 
+  requireRole('administrador'), 
+  validateId, 
+  roleController.update
+);
+app.delete('/api/roles/:id', 
+  requireAuth, 
+  requireRole('administrador'), 
+  validateId, 
+  roleController.softDelete
+);
 
 // =============================================================================
 // RUTAS DE DASHBOARD Y ANALYTICS
