@@ -1,23 +1,26 @@
-// routes/userRoutes.js
-const express = require('express');
+// routes/userRoutes.js (ESM)
+import express from 'express';
 const router = express.Router();
-const userController = require('../controllers/userController');
+import * as userController from '../controllers/userCotroller.js';
 
 // Importamos nuestros middlewares
-const { verifyToken, isAdmin } = require('../middlewares/authMiddleware');
+import { requireAuth, requireRole } from '../middlewares/auth.js';
 
 // --- Rutas Públicas (sin guardias) ---
-router.post('/login', userController.login);
-router.get('/mapa-publico', userController.getPublicMap); // El mapa público no requiere autenticación [cite: 214, 267]
+// No mover login aquí: login vive en authController en app.js actualmente
+// router.post('/login', ...)
+// Ruta pública de ejemplo
+router.get('/mapa-publico', (req, res) => res.json({ ok: true }));
 
 // --- Rutas Privadas (solo para usuarios autenticados) ---
 // Se aplica el guardia `verifyToken`
-router.get('/perfil', verifyToken, userController.getProfile);
-router.get('/dashboard', verifyToken, userController.getDashboard); // El dashboard requiere autenticación [cite: 209]
+// Estas rutas no existen en user controller actual; se omiten
+// router.get('/perfil', requireAuth, ...)
+// router.get('/dashboard', requireAuth, ...)
 
 // --- Rutas de Administrador (seguridad VIP) ---
 // Se aplican ambos guardias en orden: primero `verifyToken`, luego `isAdmin`
-router.get('/gestion/usuarios', verifyToken, isAdmin, userController.getAllUsers); // La gestión de usuarios es solo para admins [cite: 210]
-router.post('/gestion/usuarios', verifyToken, isAdmin, userController.createUser);
+router.get('/gestion/usuarios', requireAuth, requireRole('administrador'), userController.listUsers);
+router.post('/gestion/usuarios', requireAuth, requireRole('administrador'), userController.createUser);
 
-module.exports = router;
+export default router;

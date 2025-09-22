@@ -1,6 +1,6 @@
 import { asyncHandler } from '../middlewares/asyncHandler.js';
 import AppError from '../errors/AppError.js';
-import * as Roles from '../models/roleModel.js';
+import * as Roles from '../models/rolModel.js';
 import * as Audit from '../models/auditoriaModel.js';
 
 export const list = asyncHandler(async (req, res) => {

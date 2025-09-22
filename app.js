@@ -13,10 +13,8 @@ dotenv.config();
 import userRoutes from './routes/userRoutes.js';
 
 // Importar middlewares
-import { requireAuth, optionalAuth, requireRole } from './middlewares/auth.js';
-import { validateUser, validateLogin, validateId } from './middlewares/validation.js';
-import { loginLimiter, apiLimiter } from './middlewares/rateLimiter.js';
-import { sanitizeQuery, sanitizeBody } from './middlewares/sanitize.js';
+import auth from './middlewares/auth.js';
+const { requireAuth, optionalAuth, requireRole } = auth;
 
 // Importar controladores
 import * as userController from './controllers/userCotroller.js';
@@ -66,12 +64,13 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Sanitización global
-app.use(sanitizeQuery);
-app.use(sanitizeBody);
+// Montar routers
+app.use('/api', userRoutes);
 
-// Rate limiting global
-app.use(apiLimiter);
+// Sanitización y rate limiting deshabilitados (middlewares no implementados aún)
+// app.use(sanitizeQuery);
+// app.use(sanitizeBody);
+// app.use(apiLimiter);
 
 // =============================================================================
 // RUTAS PÚBLICAS
@@ -89,8 +88,8 @@ app.get('/health', (req, res) => {
 
 // Autenticación
 app.post('/api/auth/login', 
-  loginLimiter, 
-  validateLogin, 
+  // loginLimiter,
+  // validateLogin,
   authController.login
 );
 app.post('/api/auth/logout', 
@@ -114,26 +113,26 @@ app.get('/api/users',
 app.get('/api/users/:id', 
   requireAuth, 
   requireRole('administrador'), 
-  validateId, 
+  // validateId, 
   userController.getUser
 );
 app.post('/api/users', 
   requireAuth, 
   requireRole('administrador'), 
-  validateUser, 
+  // validateUser, 
   userController.createUser
 );
 app.put('/api/users/:id', 
   requireAuth, 
   requireRole('administrador'), 
-  validateId, 
-  validateUser, 
+  // validateId, 
+  // validateUser, 
   userController.updateUser
 );
 app.delete('/api/users/:id', 
   requireAuth, 
   requireRole('administrador'), 
-  validateId, 
+  // validateId, 
   userController.removeUser
 );
 
@@ -151,13 +150,13 @@ app.post('/api/roles',
 app.put('/api/roles/:id', 
   requireAuth, 
   requireRole('administrador'), 
-  validateId, 
+  // validateId, 
   roleController.update
 );
 app.delete('/api/roles/:id', 
   requireAuth, 
   requireRole('administrador'), 
-  validateId, 
+  // validateId, 
   roleController.softDelete
 );
 
@@ -192,8 +191,8 @@ app.get('/api/map/public', (req, res) => {
 // MANEJO DE ERRORES
 // =============================================================================
 
-// Middleware para rutas no encontradas
-app.use('*', (req, res) => {
+// Middleware para rutas no encontradas (Express 5 no acepta '*')
+app.use((req, res) => {
   res.status(404).json({
     ok: false,
     error: {
@@ -260,10 +259,10 @@ app.use((err, req, res, next) => {
 // Función para iniciar el servidor
 const startServer = () => {
   app.listen(PORT, () => {
-    console.log(`🚀 UrbanFlow Platform API iniciada en puerto ${PORT}`);
-    console.log(`📊 Entorno: ${NODE_ENV}`);
-    console.log(`🌐 URL: http://localhost:${PORT}`);
-    console.log(`❤️  Health check: http://localhost:${PORT}/health`);
+    console.log(` UrbanFlow Platform API iniciada en puerto ${PORT}`);
+    console.log(` Entorno: ${NODE_ENV}`);
+    console.log(` URL: http://localhost:${PORT}`);
+    console.log(` Health check: http://localhost:${PORT}/health`);
   });
 };
 

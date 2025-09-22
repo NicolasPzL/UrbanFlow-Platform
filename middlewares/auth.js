@@ -1,4 +1,5 @@
-// middlewares/auth.js
+// middlewares/auth.js (ESM compatible)
+import authConfig from '../config/auth.js';
 const {
   AUTH_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
@@ -8,14 +9,14 @@ const {
   signRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
-} = require('../config/auth');
+} = authConfig;
 
 /** Extrae token de cookie o encabezado Authorization */
 function getTokenFromReq(req) {
   const cookieTok = req.cookies?.[AUTH_COOKIE_NAME];
   if (cookieTok) return cookieTok;
 
-  const hdr = req.headers?.authorization || c
+  const hdr = req.headers?.authorization || ''
   const [type, tok] = hdr.split(' ');
   if (type?.toLowerCase() === 'bearer' && tok) return tok;
 
@@ -101,7 +102,15 @@ function stripIatExp(obj) {
   return rest;
 }
 
-module.exports = {
+export {
+  optionalAuth,
+  requireAuth,
+  requireRole,
+  setAuthCookies,
+  clearAuthCookies,
+};
+
+export default {
   optionalAuth,
   requireAuth,
   requireRole,
