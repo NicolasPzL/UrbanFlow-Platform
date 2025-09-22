@@ -1,6 +1,6 @@
 // models/userRoleModel.js
 import pool from '../config/db.js';
-import { PROTECTED_ROLES, findByName as findRoleByName } from './roleModel.js';
+import { PROTECTED_ROLES, findByName as findRoleByName } from './rolModel.js';
 
 // ---- Lecturas básicas
 export async function getUserRoles(usuario_id) {
