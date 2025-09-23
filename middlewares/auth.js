@@ -1,16 +1,119 @@
-const jwt = require('jsonwebtoken');
+// middlewares/auth.js (ESM compatible)
+import authConfig from '../config/auth.js';
+const {
+  AUTH_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
+  accessCookieOptions,
+  refreshCookieOptions,
+  signAccessToken,
+  signRefreshToken,
+  verifyAccessToken,
+  verifyRefreshToken,
+} = authConfig;
+
+/** Extrae token de cookie o encabezado Authorization */
+function getTokenFromReq(req) {
+  const cookieTok = req.cookies?.[AUTH_COOKIE_NAME];
+  if (cookieTok) return cookieTok;
+
+  const hdr = req.headers?.authorization || ''
+  const [type, tok] = hdr.split(' ');
+  if (type?.toLowerCase() === 'bearer' && tok) return tok;
+
+  return null;
+}
+
+/** Adjunta usuario al request si el token es válido (no obliga auth) */
+async function optionalAuth(req, _res, next) {
+  try {
+    const token = getTokenFromReq(req);
+    if (!token) return next();
+    const payload = verifyAccessToken(token);
+    req.user = payload; // { id, email, role, ... }
+    return next();
+  } catch (_err) {
+    // si falla, seguimos sin user
+    return next();
+  }
+}
 
 /**
- * Middleware para verificar JWT en rutas protegidas
+ * Protege la ruta. Si el access token expiró pero hay refresh válido,
+ * emite uno nuevo y continúa.
  */
-module.exports = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ success: false, message: 'Token requerido' });
+async function requireAuth(req, res, next) {
+  try {
+    const token = getTokenFromReq(req);
+    if (!token) throw new Error('NO_ACCESS');
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ success: false, message: 'Token inválido' });
-    req.user = user;
+    try {
+      const payload = verifyAccessToken(token);
+      req.user = payload;
+      return next();
+    } catch (err) {
+      // Intento de rotación con refresh si el error es por expiración
+      const refreshTok = req.cookies?.[REFRESH_COOKIE_NAME];
+      if (!refreshTok) throw err;
+
+      const refreshPayload = verifyRefreshToken(refreshTok);
+      // Re-emite access (y opcional: refresca refresh)
+      const newAccess = signAccessToken(stripIatExp(refreshPayload));
+      res.cookie(AUTH_COOKIE_NAME, newAccess, accessCookieOptions);
+
+      // (opcional) rotación del refresh para sliding sessions
+      const newRefresh = signRefreshToken(stripIatExp(refreshPayload));
+      res.cookie(REFRESH_COOKIE_NAME, newRefresh, refreshCookieOptions);
+
+      req.user = stripIatExp(refreshPayload);
+      return next();
+    }
+  } catch (_err) {
+    return res.status(401).json({ error: 'No autenticado' });
+  }
+}
+
+/** Autoriza por roles: requireRole('admin'), requireRole('admin','operator') */
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: 'No autenticado' });
+    const ok = roles.length === 0 || roles.includes(req.user.role);
+    if (!ok) return res.status(403).json({ error: 'No autorizado' });
     next();
-  });
+  };
+}
+
+/** Helpers para login/logout */
+function setAuthCookies(res, payload) {
+  const access = signAccessToken(payload);
+  const refresh = signRefreshToken(payload);
+  res.cookie(AUTH_COOKIE_NAME, access, accessCookieOptions);
+  res.cookie(REFRESH_COOKIE_NAME, refresh, refreshCookieOptions);
+}
+
+function clearAuthCookies(res) {
+  res.clearCookie(AUTH_COOKIE_NAME, { path: '/' });
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: '/' });
+}
+
+/** Quita metacampos de JWT antes de re-firmar */
+function stripIatExp(obj) {
+  // evita re-firmar con iat/exp previos
+  const { iat, exp, nbf, ...rest } = obj || {};
+  return rest;
+}
+
+export {
+  optionalAuth,
+  requireAuth,
+  requireRole,
+  setAuthCookies,
+  clearAuthCookies,
+};
+
+export default {
+  optionalAuth,
+  requireAuth,
+  requireRole,
+  setAuthCookies,
+  clearAuthCookies,
 };
