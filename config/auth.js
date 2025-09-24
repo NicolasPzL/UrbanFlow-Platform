@@ -1,6 +1,8 @@
-// config/auth.js
-require('dotenv').config();
-const jwt = require('jsonwebtoken');
+// config/auth.js (ESM)
+import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
+
+dotenv.config();
 
 /** Entorno */
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -75,7 +77,7 @@ function verifyRefreshToken(token) {
   return jwt.verify(token, REFRESH_JWT_SECRET, { algorithms: [JWT_ALG] });
 }
 
-module.exports = {
+export {
   // Env / flags
   NODE_ENV,
   IS_PROD,
@@ -96,6 +98,24 @@ module.exports = {
   refreshCookieOptions,
 
   // Helpers
+  signAccessToken,
+  verifyAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+};
+
+export default {
+  NODE_ENV,
+  IS_PROD,
+  JWT_SECRET,
+  JWT_EXPIRES_IN,
+  JWT_ALG,
+  REFRESH_JWT_SECRET,
+  REFRESH_JWT_EXPIRES_IN,
+  AUTH_COOKIE_NAME,
+  REFRESH_COOKIE_NAME,
+  accessCookieOptions,
+  refreshCookieOptions,
   signAccessToken,
   verifyAccessToken,
   signRefreshToken,
