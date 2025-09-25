@@ -20,7 +20,7 @@ router.get('/mapa-publico', (req, res) => res.json({ ok: true }));
 
 // --- Rutas de Administrador (seguridad VIP) ---
 // Se aplican ambos guardias en orden: primero `verifyToken`, luego `isAdmin`
-router.get('/gestion/usuarios', requireAuth, requireRole('administrador'), userController.listUsers);
-router.post('/gestion/usuarios', requireAuth, requireRole('administrador'), userController.createUser);
+router.get('/gestion/usuarios', requireAuth, requireRole('admin'), userController.listUsers);
+router.post('/gestion/usuarios', requireAuth, requireRole('admin'), userController.createUser);
 
 export default router;

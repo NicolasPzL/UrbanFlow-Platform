@@ -4,6 +4,7 @@ import * as Users from '../models/userModel.js';
 import * as UserRoles from '../models/userRolModel.js';
 import * as Roles from '../models/rolModel.js';
 import * as Audit from '../models/auditoriaModel.js';
+import { hashPassword } from '../utils/password.js';
 
 export const listUsers = asyncHandler(async (req, res) => {
   const { search, rol, isActive, includeDeleted, limit, offset, sortBy, sortDir } = req.query;
@@ -27,17 +28,44 @@ export const getUser = asyncHandler(async (req, res) => {
 });
 
 export const createUser = asyncHandler(async (req, res) => {
-  const { nombre, correo, passwordHash, rol = 'usuario', mustChangePassword = false } = req.body;
-  if (!nombre || !correo || !passwordHash) {
-    throw new AppError('Datos inválidos', { status: 400, code: 'VALIDATION_ERROR' });
+  const { nombre, correo, password, passwordHash, rol = 'usuario', mustChangePassword = false } = req.body;
+  if (!nombre || !correo || (!password && !passwordHash)) {
+    throw new AppError('Datos inválidos: se requiere password o passwordHash', { status: 400, code: 'VALIDATION_ERROR' });
   }
-  const user = await Users.createUser({ nombre, correo, passwordHash, rol, mustChangePassword });
+  // Validar que el rol exista y esté activo en la tabla roles (admin, operador, analista, cliente, ...)
+  if (rol) {
+    const role = await Roles.findByName(rol);
+    if (!role || role.deleted_at || role.is_active === false) {
+      throw new AppError(`Rol inválido: "${rol}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
+    }
+  }
+  // Si viene password en texto plano, lo hasheamos server-side
+  const finalHash = password ? await hashPassword(password, 12) : passwordHash;
+  const user = await Users.createUser({ nombre, correo, passwordHash: finalHash, rol, mustChangePassword });
   await Audit.log({ usuario_id: req.user.id, accion: 'CREATE_USER', detalles: { usuario_id: user.usuario_id } });
   res.status(201).json({ ok: true, data: user });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
-  const updated = await Users.updateUser(req.params.id, req.body);
+  // Permitir actualizar con password en texto plano o con passwordHash directamente
+  const { password, passwordHash } = req.body || {};
+  const body = { ...req.body };
+  if (password) {
+    body.passwordHash = await hashPassword(password, 12);
+    delete body.password; // no almacenar el texto plano
+  } else if (passwordHash) {
+    body.passwordHash = passwordHash;
+  }
+
+  // Validar rol si viene en la actualización
+  if (body.rol !== undefined) {
+    const role = await Roles.findByName(body.rol);
+    if (!role || role.deleted_at || role.is_active === false) {
+      throw new AppError(`Rol inválido: "${body.rol}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
+    }
+  }
+
+  const updated = await Users.updateUser(req.params.id, body);
   if (!updated) throw new AppError('No encontrado', { status: 404, code: 'NOT_FOUND' });
 
   await Audit.log({ usuario_id: req.user.id, accion: 'UPDATE_USER', detalles: { usuario_id: req.params.id, cambios: req.body } });
