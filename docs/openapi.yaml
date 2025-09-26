@@ -1,0 +1,588 @@
+openapi: 3.0.3
+info:
+  title: UrbanFlow Platform API
+  version: 1.0.0
+  description: |
+    API de UrbanFlow Platform. Incluye autenticación, gestión de usuarios y roles,
+    endpoints públicos y de dashboard.
+    
+    Notas:
+    - Autenticación por cookie `access_token` (cookie HTTPOnly) o por header `Authorization: Bearer <token>`.
+    - Rutas de administración requieren rol `admin`.
+servers:
+  - url: http://localhost:3000
+    description: Local
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Users
+  - name: Roles
+  - name: Dashboard
+  - name: Public
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      responses:
+        '200':
+          description: Estado del servicio
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login correcto. Devuelve cookies de sesión y datos del usuario.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: access_token y refresh_token (HTTPOnly)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Obtener usuario autenticado
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Datos del usuario del token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Cerrar sesión
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Logout correcto (cookies limpiadas)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicOkResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/users:
+    get:
+      tags: [Users]
+      summary: Listar usuarios (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: rol
+          schema: { type: string }
+        - in: query
+          name: isActive
+          schema: { type: boolean }
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, minimum: 1, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+        - in: query
+          name: sortBy
+          schema: { type: string, enum: [usuario_id, nombre, correo, creado_en] }
+        - in: query
+          name: sortDir
+          schema: { type: string, enum: [asc, desc], default: desc }
+      responses:
+        '200':
+          description: Lista paginada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: No autorizado (requiere rol admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    post:
+      tags: [Users]
+      summary: Crear usuario (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400':
+          description: Datos inválidos (password/passwordHash faltante, rol inválido, etc.)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: No autorizado (requiere rol admin)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: Correo duplicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/users/{id}:
+    get:
+      tags: [Users]
+      summary: Obtener usuario (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401': { description: No autenticado }
+        '403': { description: No autorizado }
+        '404': { description: No encontrado }
+
+    put:
+      tags: [Users]
+      summary: Actualizar usuario (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '400': { description: Rol inválido u otros errores de validación }
+        '401': { description: No autenticado }
+        '403': { description: No autorizado }
+        '404': { description: No encontrado }
+        '409': { description: Correo duplicado }
+
+    delete:
+      tags: [Users]
+      summary: Eliminar usuario (soft delete, admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Usuario eliminado (soft)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401': { description: No autenticado }
+        '403': { description: No autorizado o última cuenta admin }
+        '404': { description: No encontrado }
+
+  /api/roles:
+    get:
+      tags: [Roles]
+      summary: Listar roles (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: isActive
+          schema: { type: boolean }
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: sortBy
+          schema: { type: string, enum: [rol_id, nombre_rol, creado_en] }
+        - in: query
+          name: sortDir
+          schema: { type: string, enum: [asc, desc], default: asc }
+      responses:
+        '200':
+          description: Lista de roles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleListResponse'
+        '401': { description: No autenticado }
+        '403': { description: No autorizado }
+
+    post:
+      tags: [Roles]
+      summary: Crear rol (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoleRequest'
+      responses:
+        '201':
+          description: Rol creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoleResponse'
+        '401': { description: No autenticado }
+        '403': { description: No autorizado }
+        '409': { description: Nombre de rol duplicado }
+
+  /api/roles/{id}:
+    put:
+      tags: [Roles]
+      summary: Actualizar rol (admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoleRequest'
+      responses:
+        '200': { description: Rol actualizado, content: { application/json: { schema: { $ref: '#/components/schemas/RoleResponse' } } } }
+        '401': { description: No autenticado }
+        '403': { description: No autorizado }
+        '404': { description: No encontrado }
+        '409': { description: Nombre de rol duplicado }
+
+    delete:
+      tags: [Roles]
+      summary: Eliminar rol (soft delete, admin)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Rol eliminado (soft), content: { application/json: { schema: { $ref: '#/components/schemas/RoleResponse' } } } }
+        '401': { description: No autenticado }
+        '403': { description: Prohibido (rol protegido) }
+        '404': { description: No encontrado }
+
+  /api/dashboard:
+    get:
+      tags: [Dashboard]
+      summary: Dashboard principal (requiere auth)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Datos de dashboard (placeholder)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicOkResponse'
+        '401': { description: No autenticado }
+
+  /api/map/public:
+    get:
+      tags: [Public]
+      summary: Mapa público (sin auth)
+      responses:
+        '200':
+          description: Datos públicos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicOkResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        environment: { type: string }
+
+    ErrorResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: false }
+        error:
+          type: object
+          properties:
+            code: { type: string, example: APP_ERROR }
+            message: { type: string }
+            details: { nullable: true }
+
+    BasicOkResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          type: object
+          additionalProperties: true
+
+    LoginRequest:
+      type: object
+      required: [correo, password]
+      properties:
+        correo: { type: string, format: email }
+        password: { type: string, format: password }
+
+    LoginResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            id: { type: integer, example: 1 }
+            nombre: { type: string }
+            correo: { type: string, format: email }
+            rol: { type: string, example: admin }
+
+    MeResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          type: object
+          properties:
+            user:
+              type: object
+              properties:
+                id: { type: integer, example: 1 }
+                email: { type: string, format: email }
+                role: { type: string, example: admin }
+
+    UserPublic:
+      type: object
+      properties:
+        usuario_id: { type: integer }
+        nombre: { type: string }
+        correo: { type: string, format: email }
+        rol: { type: string, example: usuario }
+        is_active: { type: boolean }
+        creado_en: { type: string, format: date-time }
+        actualizado_en: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        last_login_at: { type: string, format: date-time, nullable: true }
+        password_updated_at: { type: string, format: date-time, nullable: true }
+        must_change_password: { type: boolean }
+        failed_attempts: { type: integer }
+        locked_until: { type: string, format: date-time, nullable: true }
+
+    UserResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          $ref: '#/components/schemas/UserPublic'
+
+    UserListResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserPublic'
+        meta:
+          type: object
+          properties:
+            total: { type: integer }
+            limit: { type: integer }
+            offset: { type: integer }
+
+    CreateUserRequest:
+      type: object
+      required: [nombre, correo]
+      properties:
+        nombre: { type: string }
+        correo: { type: string, format: email }
+        password: { type: string, description: 'Opcional si se envía passwordHash' }
+        passwordHash: { type: string, description: 'Opcional si se envía password' }
+        rol: { type: string, description: 'Debe existir en tabla roles y estar activo' }
+        mustChangePassword: { type: boolean, default: false }
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        nombre: { type: string }
+        correo: { type: string, format: email }
+        rol: { type: string, description: 'Debe existir en tabla roles y estar activo' }
+        is_active: { type: boolean }
+        must_change_password: { type: boolean }
+        password: { type: string, description: 'Para cambiar contraseña, el server la hasheará' }
+        passwordHash: { type: string, description: 'Alternativa al campo password' }
+
+    Role:
+      type: object
+      properties:
+        rol_id: { type: integer }
+        nombre_rol: { type: string, example: admin }
+        descripcion: { type: string, nullable: true }
+        is_active: { type: boolean }
+        creado_en: { type: string, format: date-time }
+        actualizado_en: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time, nullable: true }
+
+    RoleResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          $ref: '#/components/schemas/Role'
+
+    RoleListResponse:
+      type: object
+      properties:
+        ok: { type: boolean, example: true }
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Role'
+        meta:
+          type: object
+          properties:
+            total: { type: integer }
+            limit: { type: integer }
+            offset: { type: integer }
+
+    CreateRoleRequest:
+      type: object
+      required: [nombre_rol]
+      properties:
+        nombre_rol: { type: string }
+        descripcion: { type: string, nullable: true }
+        is_active: { type: boolean, default: true }
+
+    UpdateRoleRequest:
+      type: object
+      properties:
+        nombre_rol: { type: string }
+        descripcion: { type: string, nullable: true }
+        is_active: { type: boolean }
