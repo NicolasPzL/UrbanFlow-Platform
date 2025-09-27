@@ -1,7 +1,7 @@
 // routes/userRoutes.js (ESM)
 import express from 'express';
 const router = express.Router();
-import * as userController from '../controllers/userCotroller.js';
+import * as userController from '../controllers/userController.js';
 
 // Importamos nuestros middlewares
 import { requireAuth, requireRole } from '../middlewares/auth.js';
