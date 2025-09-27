@@ -34,3 +34,40 @@ router.post('/login', validateLogin, async (req, res, next) => {
 });
 
 export default router;
+
+/**
+ * authRoute.js
+ * 
+ * @description Rutas de autenticación para la plataforma UrbanFlow
+ * @version 1.0
+ * 
+ * @requires express
+ * @requires ../controllers/authController
+ * @requires ../middlewares/validations/authValidation
+ * 
+ * @route POST /auth/register
+ * @description Registra un nuevo usuario en el sistema. Según RF1, solo administradores 
+ *              deberían poder registrar usuarios, pero esta implementación actual permite 
+ *              registro público (debe revisarse según requisitos finales).
+ * @access Público
+ * @middleware validateRegistration - Valida email, contraseña, nombre, etc.
+ * @returns {Object} Usuario creado (sin contraseña)
+ * 
+ * @route POST /auth/login  
+ * @description Autentica un usuario y genera token JWT para acceso a rutas protegidas.
+ *              Implementa RF5 (login con verificación de credenciales) y RF6 (JWT).
+ * @access Público
+ * @middleware validateLogin - Valida formato de credenciales
+ * @returns {Object} Token JWT para autenticación
+ * 
+ * @example
+ * // Registro de usuario:
+ * POST /auth/register
+ * Body: { "nombre": "Juan", "email": "juan@email.com", "password": "123456", "rol": "usuario" }
+ * 
+ * // Login de usuario:
+ * POST /auth/login  
+ * Body: { "email": "juan@email.com", "password": "123456" }
+ * Response: { "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+ * Nota importante: Según el requisito RF1 del documento, el registro de nuevos usuarios debería estar restringido solo a administradores. La implementación actual permite registro público, lo que podría necesitar ajustarse según los requisitos de seguridad finales.
+ */
