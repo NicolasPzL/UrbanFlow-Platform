@@ -17,7 +17,7 @@ import auth from './middlewares/auth.js';
 const { requireAuth, optionalAuth, requireRole } = auth;
 
 // Importar controladores
-import * as userController from './controllers/userCotroller.js';
+import * as userController from './controllers/userController.js';
 import * as authController from './controllers/authController.js';
 import * as roleController from './controllers/roleController.js';
 
@@ -64,9 +64,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Montar routers
-app.use('/api', userRoutes);
-
 // Sanitización y rate limiting deshabilitados (middlewares no implementados aún)
 // app.use(sanitizeQuery);
 // app.use(sanitizeBody);
@@ -107,31 +104,31 @@ app.get('/api/auth/me', requireAuth, authController.me);
 // Gestión de usuarios (solo admin)
 app.get('/api/users', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   userController.listUsers
 );
 app.get('/api/users/:id', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   // validateId, 
   userController.getUser
 );
 app.post('/api/users', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   // validateUser, 
   userController.createUser
 );
 app.put('/api/users/:id', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   // validateId, 
   // validateUser, 
   userController.updateUser
 );
 app.delete('/api/users/:id', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   // validateId, 
   userController.removeUser
 );
@@ -139,23 +136,23 @@ app.delete('/api/users/:id',
 // Gestión de roles (solo admin)
 app.get('/api/roles', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   roleController.list
 );
 app.post('/api/roles', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   roleController.create
 );
 app.put('/api/roles/:id', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   // validateId, 
   roleController.update
 );
 app.delete('/api/roles/:id', 
   requireAuth, 
-  requireRole('administrador'), 
+  requireRole('admin'), 
   // validateId, 
   roleController.softDelete
 );
@@ -186,6 +183,9 @@ app.get('/api/map/public', (req, res) => {
     }
   });
 });
+
+// Montar routers adicionales
+app.use('/api', userRoutes);
 
 // =============================================================================
 // MANEJO DE ERRORES
