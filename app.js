@@ -17,7 +17,7 @@ import auth from './middlewares/auth.js';
 const { requireAuth, optionalAuth, requireRole } = auth;
 
 // Importar controladores
-import * as userController from './controllers/userCotroller.js';
+import * as userController from './controllers/userController.js';
 import * as authController from './controllers/authController.js';
 import * as roleController from './controllers/roleController.js';
 
