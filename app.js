@@ -11,15 +11,17 @@ dotenv.config();
 
 // Importar rutas
 import userRoutes from './routes/userRoutes.js';
+import authRoutes from './routes/authRoutes.js';
+import roleRoutes from './routes/roleRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import publicRoutes from './routes/publicRoutes.js';
 
 // Importar middlewares
 import auth from './middlewares/auth.js';
+import errorHandler from './middlewares/errorHandler.js';
 const { requireAuth, optionalAuth, requireRole } = auth;
 
-// Importar controladores
-import * as userController from './controllers/userController.js';
-import * as authController from './controllers/authController.js';
-import * as roleController from './controllers/roleController.js';
+// Importar controladores (ya gestionados por routers dedicados)
 
 // Crear aplicación Express
 const app = express();
@@ -83,109 +85,31 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Autenticación
-app.post('/api/auth/login', 
-  // loginLimiter,
-  // validateLogin,
-  authController.login
-);
-app.post('/api/auth/logout', 
-  requireAuth, 
-  authController.logout
-);
+// Autenticación (router dedicado)
+app.use('/api/auth', authRoutes);
 
 // =============================================================================
 // RUTAS PROTEGIDAS (requieren autenticación)
 // =============================================================================
 
-// Usuario actual
-app.get('/api/auth/me', requireAuth, authController.me);
+// Usuario actual (expuesto por router de auth)
+// app.get('/api/auth/me', requireAuth, authController.me);
 
-// Gestión de usuarios (solo admin)
-app.get('/api/users', 
-  requireAuth, 
-  requireRole('admin'), 
-  userController.listUsers
-);
-app.get('/api/users/:id', 
-  requireAuth, 
-  requireRole('admin'), 
-  // validateId, 
-  userController.getUser
-);
-app.post('/api/users', 
-  requireAuth, 
-  requireRole('admin'), 
-  // validateUser, 
-  userController.createUser
-);
-app.put('/api/users/:id', 
-  requireAuth, 
-  requireRole('admin'), 
-  // validateId, 
-  // validateUser, 
-  userController.updateUser
-);
-app.delete('/api/users/:id', 
-  requireAuth, 
-  requireRole('admin'), 
-  // validateId, 
-  userController.removeUser
-);
+// Usuarios (CRUD canónico) - protegido a nivel de montaje
+app.use('/api/users', requireAuth, requireRole('admin'), userRoutes);
 
-// Gestión de roles (solo admin)
-app.get('/api/roles', 
-  requireAuth, 
-  requireRole('admin'), 
-  roleController.list
-);
-app.post('/api/roles', 
-  requireAuth, 
-  requireRole('admin'), 
-  roleController.create
-);
-app.put('/api/roles/:id', 
-  requireAuth, 
-  requireRole('admin'), 
-  // validateId, 
-  roleController.update
-);
-app.delete('/api/roles/:id', 
-  requireAuth, 
-  requireRole('admin'), 
-  // validateId, 
-  roleController.softDelete
-);
+// Roles (CRUD) - protegido a nivel de montaje
+app.use('/api/roles', requireAuth, requireRole('admin'), roleRoutes);
 
 // =============================================================================
 // RUTAS DE DASHBOARD Y ANALYTICS
 // =============================================================================
 
-// Dashboard principal
-app.get('/api/dashboard', requireAuth, (req, res) => {
-  res.json({
-    ok: true,
-    data: {
-      message: 'Dashboard endpoint - implementar lógica de analytics',
-      user: req.user,
-      timestamp: new Date().toISOString()
-    }
-  });
-});
-
 // Mapa público (sin autenticación)
-app.get('/api/map/public', (req, res) => {
-  res.json({
-    ok: true,
-    data: {
-      message: 'Mapa público - implementar datos de estaciones y rutas',
-      timestamp: new Date().toISOString()
-    }
-  });
-});
+app.use('/api/map', publicRoutes);
 
-// Montar routers adicionales
-app.use('/api', userRoutes);
+// Dashboard (requiere autenticación)
+app.use('/api/dashboard', requireAuth, dashboardRoutes);
 
 // =============================================================================
 // MANEJO DE ERRORES
@@ -203,54 +127,8 @@ app.use((req, res) => {
   });
 });
 
-// Middleware global de manejo de errores
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-
-  // Error de validación
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({
-      ok: false,
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Datos de entrada inválidos',
-        details: err.message
-      }
-    });
-  }
-
-  // Error de JWT
-  if (err.name === 'JsonWebTokenError') {
-    return res.status(401).json({
-      ok: false,
-      error: {
-        code: 'INVALID_TOKEN',
-        message: 'Token inválido'
-      }
-    });
-  }
-
-  // Error de AppError personalizado
-  if (err.status) {
-    return res.status(err.status).json({
-      ok: false,
-      error: {
-        code: err.code || 'APP_ERROR',
-        message: err.message,
-        details: err.details
-      }
-    });
-  }
-
-  // Error interno del servidor
-  res.status(500).json({
-    ok: false,
-    error: {
-      code: 'INTERNAL_ERROR',
-      message: NODE_ENV === 'development' ? err.message : 'Error interno del servidor'
-    }
-  });
-});
+// Middleware global de manejo de errores (centralizado)
+app.use(errorHandler);
 
 // =============================================================================
 // INICIO DEL SERVIDOR
