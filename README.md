@@ -46,6 +46,32 @@ Transformar la movilidad urbana mediante una plataforma digital que integre:
 - Indicadores de desempeño
 
 ---
+## Estructura del Repositorio
+
+```
+urbanflow-platform/
+├── config/           # Archivos de configuración general
+├── controllers/      # Lógica de negocio (intermediario entre models y views)
+├── data/            # Datos estáticos o archivos temporales
+├── db/              # Scripts y configuraciones para conexión a BD
+├── docs/            # Documentación técnica y manuales
+├── errors/          # Manejo personalizado de errores
+├── microservices/   # Microservicios adicionales (Flask para IA)
+├── middlewares/     # Funciones intermedias (autenticación, autorización)
+├── models/          # Definición de estructuras de datos y esquemas de BD
+├── public/          # Archivos estáticos accesibles (CSS, JS, imágenes)
+├── routes/          # Definición de rutas de la API y aplicativo web
+├── sql/             # Scripts SQL de creación y carga de BD
+├── utils/           # Funciones auxiliares reutilizables
+├── views/           # Vistas/renderizado de interfaz (plantillas)
+├── .gitignore       # Archivos/carpetas a ignorar en Git
+├── app.js           # Archivo principal de la aplicación Node.js
+├── LICENSE.md       # Licencia del proyecto
+├── package.json     # Dependencias y scripts del proyecto
+├── README.md        # Este archivo
+└── requirements.txt # Dependencias para microservicios Python
+```
+---
 
 ## Módulos de la Plataforma
 
