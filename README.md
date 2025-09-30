@@ -1,194 +1,72 @@
 # UrbanFlow Platform
-Plataforma digital integral para la gestión, monitoreo y análisis del sistema de metro cable de NovaCore.
 
-## Conectamos tu ciudad desde las alturas  
-**Movilidad Inteligente**
+**Plataforma integral de gestión y monitoreo para sistemas de transporte por cable**
 
----
+#### Movilidad Inteligente | Eficiencia | Seguridad
+## Visión General
 
-## Descripción del Proyecto
-
-Este es el monorepo oficial para el desarrollo de la plataforma digital integral de **NovaCore**. El objetivo es gestionar, monitorear y analizar eficientemente nuestro sistema de metro cable urbano por cabinas.
-
-Buscamos optimizar la experiencia de viaje, aumentar la eficiencia del servicio y fortalecer la seguridad de los pasajeros mediante el uso estratégico de datos y plataformas tecnológicas innovadoras.
+UrbanFlow es una solución tecnológica completa diseñada para la gestión, monitoreo y análisis de sistemas de transporte por cable. La plataforma centraliza toda la operación, proporcionando herramientas avanzadas para optimizar la eficiencia, seguridad y experiencia del usuario.
 
 ---
 
-## Estructura del Repositorio
+## Objetivo Principal
 
-```
-urbanflow-platform/
-├── config/           # Archivos de configuración general
-├── controllers/      # Lógica de negocio (intermediario entre models y views)
-├── data/            # Datos estáticos o archivos temporales
-├── db/              # Scripts y configuraciones para conexión a BD
-├── docs/            # Documentación técnica y manuales
-├── errors/          # Manejo personalizado de errores
-├── microservices/   # Microservicios adicionales (Flask para IA)
-├── middlewares/     # Funciones intermedias (autenticación, autorización)
-├── models/          # Definición de estructuras de datos y esquemas de BD
-├── public/          # Archivos estáticos accesibles (CSS, JS, imágenes)
-├── routes/          # Definición de rutas de la API y aplicativo web
-├── sql/             # Scripts SQL de creación y carga de BD
-├── utils/           # Funciones auxiliares reutilizables
-├── views/           # Vistas/renderizado de interfaz (plantillas)
-├── .gitignore       # Archivos/carpetas a ignorar en Git
-├── app.js           # Archivo principal de la aplicación Node.js
-├── LICENSE.md       # Licencia del proyecto
-├── package.json     # Dependencias y scripts del proyecto
-├── README.md        # Este archivo
-└── requirements.txt # Dependencias para microservicios Python
-```
+Transformar la movilidad urbana mediante una plataforma digital que integre:
+
+- **Gestión operativa** en tiempo real
+- **Monitoreo continuo** del estado de las cabinas
+- **Análisis predictivo** mediante inteligencia artificial
+- **Visualización geográfica** de toda la operación
 
 ---
 
-## Funcionalidades Clave
+## Características Principales
 
-El desarrollo de esta plataforma se centra en los siguientes módulos principales:
+### Dashboard Centralizado
+- Monitoreo en tiempo real del estado operativo
+- Métricas de rendimiento y eficiencia
+- Alertas tempranas y notificaciones
+- Históricos y tendencias
 
-### Modulo de Gestion de Usuarios CRUD
-- Sistema de autenticación segura con JWT y cookies HTTP-only
-- Gestion de roles (Administrador y Usuario)
-- Registro, edición y eliminación de usuarios (solo administradores)
-- Middlewares de verificación de token y permisos de administrador
+### Geoportal Interactivo
+- Mapa en tiempo real con posición de cabinas
+- Código de colores para estados operativos
+- Visualización de rutas y estaciones
+- Acceso público informativo
 
-### Dashboard de Datos y Analítica
-- Visualización en tiempo real e histórica de mediciones IoT
-- Parámetros de vibración (RMS, curtosis, skewness, ZCR, valor pico, crest factor)
-- Análisis espectral (frecuencias principales, energía por bandas)
-- Modelo de IA para predicción de estados (Operativo, Alerta, Fallo)
-- Gráficos y tablas dinámicas para exploración de datos
+### Gestión de Usuarios
+- Roles diferenciados (Administradores, Operadores)
+- Autenticación segura
+- Control de acceso y permisos
 
-### Geoportal y Visualización en Mapa
-- Mapa interactivo con la red completa de transporte por cable aéreo
-- Marcadores dinámicos que se mueven en tiempo real según coordenadas GPS
-- Codigo de colores para estado de cabinas (Verde: Normal, Amarillo: Alerta, Rojo: Fallo)
-- Vista pública accesible sin autenticación
-- Funcionalidades adicionales: capas, filtros, vistas históricas
-
----
-
-## Como Empezar
-
-### Prerrequisitos
-- Node.js 16+ 
-- Python 3.8+
-- PostgreSQL 12+
-- Git
-
-### Instalación y Configuración
-
-1. **Clonar el repositorio:**
-```bash
-git clone https://github.com/novacore/urbanflow-platform.git
-cd urbanflow-platform
-```
-
-2. **Configurar Backend (Node.js):**
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Configurar variables de entorno en .env (BD, JWT_SECRET, etc.)
-npm run dev
-```
-
-3. **Configurar Microservicio de Analítica (Python/Flask):**
-```bash
-cd analytics
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
-```
-
-4. **Configurar Frontend (Node.js):**
-```bash
-cd frontend
-npm install
-npm start
-```
-
-### Variables de Entorno Críticas
-
-**Backend (.env):**
-```env
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=urbanflow
-DB_USER=usuario
-DB_PASS=contraseña
-JWT_SECRET=tu_jwt_secret_muy_seguro
-FLASK_MS_URL=http://localhost:5000
-```
-
-**Analytics (.env):**
-```env
-DB_URL=postgresql://usuario:contraseña@localhost:5432/urbanflow
-MODEL_PATH=./models/predictive_model.pkl
-```
+### Analítica Avanzada
+- Procesamiento de datos de sensores IoT
+- Modelos predictivos de mantenimiento
+- Reportes personalizables
+- Indicadores de desempeño
 
 ---
 
-## Estructura de la Base de Datos
+## Módulos de la Plataforma
 
-La plataforma utiliza PostgreSQL con las siguientes tablas principales:
-- `cabinas`: Información estática de cada cabina
-- `sensores`: Sensores IoT asociados a cabinas
-- `mediciones`: Datos en tiempo real de sensores (1 registro/segundo)
-- `usuarios`: Gestion de usuarios y roles
-
----
-
-## Desarrollo
-
-### Scripts Disponibles
-
-**Backend:**
-```bash
-npm run dev          # Desarrollo con hot-reload
-npm test             # Ejecutar pruebas unitarias
-npm run build        # Compilación para producción
-```
-
-**Analytics:**
-```bash
-python train_model.py    # Entrenar modelo de IA
-python test_model.py     # Probar modelo con datos de prueba
-```
-
-### Convenciones de Código
-- Seguir patrones MVC en backend
-- Usar ESLint/Prettier para consistencia de código
-- Commits semánticos (feat, fix, docs, style, refactor, test, chore)
-- Branching strategy: Git Flow
+| Módulo | Función |
+|--------|---------|
+| **Operaciones** | Monitoreo en tiempo real y gestión de flota |
+| **Seguridad** | Control de acceso y protocolos de emergencia |
+| **Mantenimiento** | Alertas predictivas y gestión de incidencias |
+| **Analítica** | Business Intelligence y reporting |
+| **Usuario** | Información pública y autogestión |
 
 ---
 
-## Cronograma de Desarrollo
+## Beneficios Clave
 
-El proyecto sigue un cronograma de 12 semanas:
-1. **Semanas 1-2:** Arquitectura, prototipo y documentación
-2. **Semanas 3-4:** Backend y autenticación
-3. **Semanas 5-6:** Frontend inicial y mapa
-4. **Semanas 7-8:** Microservicio Flask y KPIs
-5. **Semanas 9-10:** Integración completa con IA
-6. **Semanas 11-12:** Pruebas, optimización y entrega
+-  **Eficiencia operativa** mejorada
+-  **Seguridad** reforzada para pasajeros
+-  **Experiencia de usuario** optimizada
+-  **Toma de decisiones** basada en datos
+-  **Mantenimiento predictivo** preventivo
 
 ---
 
-## Soporte y Documentación
-
-- [Documentación Técnica](./docs/technical.md)
-- [Reportar Issues](https://github.com/novacore/urbanflow-platform/issues)
-- [Changelog](./docs/CHANGELOG.md)
-
----
-
-## Licencia
-
-Este proyecto está bajo la Licencia MIT. Ver el archivo [LICENSE.md](LICENSE.md) para más detalles.
-
----
-
-**NovaCore** - Transformando la movilidad urbana mediante tecnología innovadora.
+**UrbanFlow** - Conectando ciudades de forma inteligente y segura

@@ -1,17 +1,23 @@
-const errorHandler = (err, req, res, next) => {
-    // Log the error for debugging purposes
-    console.error(err);
+export default function errorHandler(err, req, res, _next) {
+  // Log para observabilidad (puedes integrar logger real aquí)
+  console.error('Error:', err);
 
-    // Determine the status code and message
-    const statusCode = err.statusCode || 500;
-    const message = err.message || 'Internal Server Error';
+  // Normalizar status y payload
+  const status = err.status || err.statusCode || 500;
+  const code = err.code || (status === 500 ? 'INTERNAL_ERROR' : 'APP_ERROR');
+  const message = err.message || 'Error interno del servidor';
+  const details = err.details ?? null;
 
-    // Send the standardized error response
-    res.status(statusCode).json({
-        success: false,
-        message: message,
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }) // Include stack trace in development
-    });
-};
+  // Respuesta alineada al estándar del proyecto
+  const body = {
+    ok: false,
+    error: { code, message, details },
+  };
 
-module.exports = errorHandler;
+  // Adjuntar stack solo en desarrollo
+  if (process.env.NODE_ENV === 'development') {
+    body.stack = err.stack;
+  }
+
+  res.status(status).json(body);
+}
