@@ -1,29 +1,49 @@
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { InteractiveMap } from "./InteractiveMap";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { mockCabins, mockStations } from "../data/mockData";
+// Datos ahora vienen del backend público /api/map/public
 import { Filter, MapPin, Activity, Users, Eye } from "lucide-react";
 
 export function DetailedGeoportal() {
   const [filteredStatus, setFilteredStatus] = useState<string>("all");
   const [selectedView, setSelectedView] = useState<string>("overview");
+  const [stations, setStations] = useState<any[]>([]);
+  const [cabins, setCabins] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredCabins = filteredStatus === "all" 
-    ? mockCabins 
-    : mockCabins.filter(cabin => cabin.status === filteredStatus);
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch('/api/map/public', { credentials: 'include' });
+        if (!resp.ok) throw new Error('No se pudo cargar el geoportal detallado');
+        const json = await resp.json();
+        setStations(Array.isArray(json?.data?.stations) ? json.data.stations : []);
+        setCabins(Array.isArray(json?.data?.cabins) ? json.data.cabins : []);
+      } catch (e: any) {
+        setError(e?.message || 'Error al cargar');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const filteredCabins = filteredStatus === "all"
+    ? cabins
+    : cabins.filter((c: any) => c.status === filteredStatus);
 
   const statusCounts = {
-    normal: mockCabins.filter(c => c.status === 'normal').length,
-    warning: mockCabins.filter(c => c.status === 'warning').length,
-    alert: mockCabins.filter(c => c.status === 'alert').length
+    normal: cabins.filter((c: any) => c.status === 'normal').length,
+    warning: cabins.filter((c: any) => c.status === 'warning').length,
+    alert: cabins.filter((c: any) => c.status === 'alert').length,
   };
 
-  const totalPassengers = mockCabins.reduce((sum, cabin) => sum + cabin.passengers, 0);
-  const avgVibration = (mockCabins.reduce((sum, cabin) => sum + cabin.vibrationLast, 0) / mockCabins.length).toFixed(2);
-  const avgVelocity = (mockCabins.reduce((sum, cabin) => sum + cabin.velocity, 0) / mockCabins.length).toFixed(1);
+  const totalPassengers = cabins.reduce((sum: number, c: any) => sum + (c.passengers || 0), 0);
+  const avgVibration = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.vibrationLast || 0), 0) / cabins.length).toFixed(2) : '0.00';
+  const avgVelocity = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.velocity || 0), 0) / cabins.length).toFixed(1) : '0.0';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -129,17 +149,23 @@ export function DetailedGeoportal() {
                 <span>Mapa Operacional Detallado</span>
               </CardTitle>
               <Badge variant="outline">
-                {filteredCabins.length} de {mockCabins.length} cabinas mostradas
+                {filteredCabins.length} de {cabins.length} cabinas mostradas
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            <InteractiveMap
-              cabins={filteredCabins}
-              stations={mockStations}
-              isPublic={false}
-              className="h-96 w-full"
-            />
+            {loading ? (
+              <div className="h-96 w-full flex items-center justify-center text-sm text-gray-500">Cargando mapa...</div>
+            ) : error ? (
+              <div className="h-96 w-full flex items-center justify-center text-sm text-red-600">{error}</div>
+            ) : (
+              <InteractiveMap
+                cabins={filteredCabins}
+                stations={stations}
+                isPublic={false}
+                className="h-96 w-full"
+              />
+            )}
           </CardContent>
         </Card>
 

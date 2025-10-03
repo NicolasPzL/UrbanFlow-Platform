@@ -1,13 +1,40 @@
+import React, { useEffect, useState } from "react";
 import { InteractiveMap } from "./InteractiveMap";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { mockCabins, mockStations } from "../data/mockData";
 import { Activity, MapPin, Users, Clock } from "lucide-react";
 
+type PublicMapData = {
+  message?: string;
+  timestamp?: string;
+  stations?: any[];
+  cabins?: any[];
+  stats?: { activeCabins?: number; totalPassengers?: number; avgETA?: string };
+};
+
 export function PublicGeoportal() {
-  const activeCabins = mockCabins.filter(cabin => cabin.isMoving).length;
-  const totalPassengers = mockCabins.reduce((sum, cabin) => sum + cabin.passengers, 0);
-  const avgETA = "14:35";
+  const [data, setData] = useState<PublicMapData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch('/api/map/public', { credentials: 'include' });
+        if (!resp.ok) throw new Error('No se pudo cargar el geoportal');
+        const json = await resp.json();
+        setData(json.data || {});
+      } catch (e: any) {
+        setError(e?.message || 'Error al cargar');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const activeCabins = data?.stats?.activeCabins ?? 0;
+  const totalPassengers = data?.stats?.totalPassengers ?? 0;
+  const avgETA = data?.stats?.avgETA ?? "--:--";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -50,7 +77,7 @@ export function PublicGeoportal() {
             <CardContent>
               <div className="text-2xl font-bold">{activeCabins}</div>
               <p className="text-xs text-muted-foreground">
-                de {mockCabins.length} totales
+                cabinas activas
               </p>
             </CardContent>
           </Card>
@@ -91,12 +118,18 @@ export function PublicGeoportal() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <InteractiveMap
-              cabins={mockCabins}
-              stations={mockStations}
-              isPublic={true}
-              className="h-96 w-full"
-            />
+            {loading ? (
+              <div className="h-96 w-full flex items-center justify-center text-sm text-gray-500">Cargando mapa...</div>
+            ) : error ? (
+              <div className="h-96 w-full flex items-center justify-center text-sm text-red-600">{error}</div>
+            ) : (
+              <InteractiveMap
+                cabins={Array.isArray(data?.cabins) ? data!.cabins : []}
+                stations={Array.isArray(data?.stations) ? data!.stations : []}
+                isPublic={true}
+                className="h-96 w-full"
+              />
+            )}
           </CardContent>
         </Card>
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -7,15 +7,24 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "./ui/dialog";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { mockUsers } from "../data/mockData";
-import { User } from "../types";
+// Dejar de usar datos mock. Consumir backend.
+type UIUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "operator" | "analyst" | string;
+  status: "active" | "inactive" | string;
+  lastLogin?: string;
+};
 import { Search, Plus, Edit, Trash2, Users } from "lucide-react";
 
 export function UserManagement() {
-  const [users, setUsers] = useState<User[]>(mockUsers);
+  const [users, setUsers] = useState<UIUser[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UIUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({
     name: "",
     email: "",
@@ -23,20 +32,61 @@ export function UserManagement() {
     status: "active" as const
   });
 
+  // Cargar usuarios desde backend (requiere admin)
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch('/api/users', { credentials: 'include' });
+        if (!resp.ok) throw new Error('No se pudo cargar usuarios');
+        const json = await resp.json();
+        const items = Array.isArray(json.data) ? json.data : [];
+        const mapped: UIUser[] = items.map((u: any) => ({
+          id: String(u.usuario_id ?? u.id ?? ''),
+          name: u.nombre ?? u.name ?? '',
+          email: u.correo ?? u.email ?? '',
+          role: u.rol ?? u.role ?? 'operator',
+          status: (u.is_active === false ? 'inactive' : 'active'),
+          lastLogin: u.last_login ?? u.lastLogin ?? undefined,
+        }));
+        setUsers(mapped);
+      } catch (e: any) {
+        setError(e?.message || 'Error al cargar');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
   const filteredUsers = users.filter(user =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleCreateUser = () => {
-    const user: User = {
-      id: `USR${Date.now()}`,
-      ...newUser,
-      lastLogin: undefined
-    };
-    setUsers([...users, user]);
-    setNewUser({ name: "", email: "", role: "operator", status: "active" });
-    setIsCreateModalOpen(false);
+  const handleCreateUser = async () => {
+    try {
+      const resp = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ nombre: newUser.name, correo: newUser.email, rol: newUser.role, password: 'Usuario123!' }),
+      });
+      if (!resp.ok) throw new Error('No se pudo crear el usuario');
+      const created = await resp.json();
+      const u = created.data;
+      const mapped: UIUser = {
+        id: String(u.usuario_id ?? u.id ?? ''),
+        name: u.nombre ?? '',
+        email: u.correo ?? '',
+        role: u.rol ?? 'operator',
+        status: (u.is_active === false ? 'inactive' : 'active'),
+        lastLogin: u.last_login ?? undefined,
+      };
+      setUsers([...users, mapped]);
+      setNewUser({ name: "", email: "", role: "operator", status: "active" });
+      setIsCreateModalOpen(false);
+    } catch (e) {
+      alert('Error creando usuario');
+    }
   };
 
   const handleEditUser = (user: User) => {
@@ -49,20 +99,32 @@ export function UserManagement() {
     });
   };
 
-  const handleUpdateUser = () => {
+  const handleUpdateUser = async () => {
     if (!editingUser) return;
-    
-    setUsers(users.map(user => 
-      user.id === editingUser.id 
-        ? { ...user, ...newUser }
-        : user
-    ));
-    setEditingUser(null);
-    setNewUser({ name: "", email: "", role: "operator", status: "active" });
+    try {
+      const resp = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ nombre: newUser.name, correo: newUser.email, rol: newUser.role, is_active: newUser.status === 'active' }),
+      });
+      if (!resp.ok) throw new Error('No se pudo actualizar');
+      setUsers(users.map(user => user.id === editingUser.id ? { ...user, ...newUser } : user));
+      setEditingUser(null);
+      setNewUser({ name: "", email: "", role: "operator", status: "active" });
+    } catch (e) {
+      alert('Error actualizando usuario');
+    }
   };
 
-  const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter(user => user.id !== userId));
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      const resp = await fetch(`/api/users/${userId}`, { method: 'DELETE', credentials: 'include' });
+      if (!resp.ok) throw new Error('No se pudo eliminar');
+      setUsers(users.filter(user => user.id !== userId));
+    } catch (e) {
+      alert('Error eliminando usuario');
+    }
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -236,6 +298,8 @@ export function UserManagement() {
             </div>
           </CardHeader>
           <CardContent>
+            {loading && <div className="text-sm text-gray-500">Cargando usuarios...</div>}
+            {error && <div className="text-sm text-red-600">{error}</div>}
             <Table>
               <TableHeader>
                 <TableRow>

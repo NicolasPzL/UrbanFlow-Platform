@@ -1,26 +1,47 @@
+import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { mockKPIs, mockVibrationData, getCabinHistoricalData, mockCabins } from "../data/mockData";
 import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle } from "lucide-react";
 
-export function Dashboard() {
-  const historicalData = getCabinHistoricalData();
-  
-  // Prepare chart data
-  const vibrationChartData = mockVibrationData
-    .filter(d => d.cabinId === 'CB001')
-    .map(d => ({ time: d.time, vibration: d.vibration }));
+type DashboardData = {
+  kpis?: { id: string; title: string; value: string; change: number; status: 'positive'|'negative'|'neutral' }[];
+  vibrationSeries?: { time: string; vibration: number }[];
+  passengersSeries?: { hour: string; passengers: number }[];
+  cabins?: any[];
+};
 
-  const passengersChartData = [
-    { hour: '10:00', passengers: 1234 },
-    { hour: '11:00', passengers: 1456 },
-    { hour: '12:00', passengers: 1678 },
-    { hour: '13:00', passengers: 1534 },
-    { hour: '14:00', passengers: 1847 },
-    { hour: '15:00', passengers: 1923 }
-  ];
+export function Dashboard() {
+  const [data, setData] = useState<DashboardData>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const resp = await fetch('/api/dashboard', { credentials: 'include' });
+        if (!resp.ok) throw new Error('No se pudo cargar el dashboard');
+        const json = await resp.json();
+        // Espera { ok, data } pero aceptamos flexibilidad
+        setData(json.data || {});
+      } catch (e: any) {
+        setError(e?.message || 'Error al cargar');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const historicalData = Array.isArray(data.cabins)
+    ? data.cabins.map((c: any) => ({
+        cabinId: c.id ?? 'CB', timestamp: '', position: c.position ?? {x:0,y:0}, velocity: c.velocity ?? 0,
+        vibration: c.vibrationLast ?? 0, passengers: c.passengers ?? 0, status: c.status ?? 'normal'
+      }))
+    : [];
+
+  const vibrationChartData = Array.isArray(data.vibrationSeries) ? data.vibrationSeries : [];
+  const passengersChartData = Array.isArray(data.passengersSeries) ? data.passengersSeries : [];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -66,7 +87,7 @@ export function Dashboard() {
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {mockKPIs.map((kpi) => (
+          {(data.kpis || []).map((kpi) => (
             <Card key={kpi.id}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{kpi.title}</CardTitle>
@@ -101,7 +122,7 @@ export function Dashboard() {
                   <XAxis dataKey="time" />
                   <YAxis domain={[0, 3]} />
                   <Tooltip 
-                    formatter={(value) => [`${value} RMS`, 'Vibración']}
+                    formatter={(value: number) => [`${value} RMS`, 'Vibración']}
                   />
                   <Line 
                     type="monotone" 
@@ -126,7 +147,7 @@ export function Dashboard() {
                   <XAxis dataKey="hour" />
                   <YAxis />
                   <Tooltip 
-                    formatter={(value) => [`${value}`, 'Pasajeros']}
+                    formatter={(value: number) => [`${value}`, 'Pasajeros']}
                   />
                   <Bar dataKey="passengers" fill="#3B82F6" />
                 </BarChart>
@@ -154,7 +175,7 @@ export function Dashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {historicalData.map((record, index) => (
+                {historicalData.map((record: any, index: number) => (
                   <TableRow key={index}>
                     <TableCell className="font-medium">{record.cabinId}</TableCell>
                     <TableCell>{record.timestamp}</TableCell>
@@ -184,7 +205,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-              {mockCabins.map((cabin) => (
+              {(data.cabins || []).map((cabin: any) => (
                 <Card key={cabin.id} className="relative">
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">

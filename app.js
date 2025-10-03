@@ -1,6 +1,8 @@
 // app.js - Aplicación principal de UrbanFlow Platform
 import dotenv from 'dotenv';
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -29,6 +31,10 @@ const app = express();
 // Configuración del puerto
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+
+// Resolver __dirname en módulos ESM
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // =============================================================================
 // MIDDLEWARES GLOBALES
@@ -110,6 +116,20 @@ app.use('/api/map', publicRoutes);
 
 // Dashboard (requiere autenticación)
 app.use('/api/dashboard', requireAuth, dashboardRoutes);
+
+// =============================================================================
+// SERVIR FRONTEND (BUILD VITE) Y FALLBACK SPA
+// =============================================================================
+
+// Servir archivos estáticos del frontend compilado
+const clientBuildPath = path.join(__dirname, 'views', 'original', 'build');
+app.use(express.static(clientBuildPath));
+
+// Fallback SPA: para cualquier ruta que no sea /api/*, devolver index.html
+// Express 5 no acepta '*', usamos una regex que excluye /api
+app.get(/^(?!\/api\/).*/, (req, res) => {
+  return res.sendFile(path.join(clientBuildPath, 'index.html'));
+});
 
 // =============================================================================
 // MANEJO DE ERRORES

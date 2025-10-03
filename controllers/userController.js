@@ -6,6 +6,7 @@ import * as Roles from '../models/rolModel.js';
 import * as Audit from '../models/auditoriaModel.js';
 import { hashPassword } from '../utils/password.js';
 
+// Listado de usuarios (usado por routes/userRoutes.js -> GET /api/users)
 export const listUsers = asyncHandler(async (req, res) => {
   const { search, rol, isActive, includeDeleted, limit, offset, sortBy, sortDir } = req.query;
   const data = await Users.list({
@@ -16,7 +17,7 @@ export const listUsers = asyncHandler(async (req, res) => {
     limit: Number(limit) || 20,
     offset: Number(offset) || 0,
     sortBy: sortBy || 'usuario_id',
-    sortDir: sortDir || 'desc'
+    sortDir: sortDir || 'desc',
   });
   res.json({ ok: true, data: data.items, meta: { total: data.total, limit: Number(limit) || 20, offset: Number(offset) || 0 } });
 });
@@ -24,49 +25,90 @@ export const listUsers = asyncHandler(async (req, res) => {
 export const getUser = asyncHandler(async (req, res) => {
   const u = await Users.findById(req.params.id);
   if (!u) throw new AppError('No encontrado', { status: 404, code: 'NOT_FOUND' });
-  res.json({ ok: true, data: u });
+  const rolesAssigned = await UserRoles.getUserRoles(u.usuario_id);
+  res.json({ ok: true, data: { ...u, roles: rolesAssigned.map(r => r.nombre_rol) } });
 });
-
 export const createUser = asyncHandler(async (req, res) => {
-  const { nombre, correo, password, passwordHash, rol = 'usuario', mustChangePassword = false } = req.body;
+  const { nombre, correo, password, passwordHash, mustChangePassword = false } = req.body || {};
+  let { rol, roles } = req.body || {};
   if (!nombre || !correo || (!password && !passwordHash)) {
     throw new AppError('Datos inválidos: se requiere password o passwordHash', { status: 400, code: 'VALIDATION_ERROR' });
   }
-  // Validar que el rol exista y esté activo en la tabla roles (admin, operador, analista, cliente, ...)
-  if (rol) {
-    const role = await Roles.findByName(rol);
-    if (!role || role.deleted_at || role.is_active === false) {
-      throw new AppError(`Rol inválido: "${rol}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
+
+  // Normalizar roles a arreglo
+  let desiredRoles = [];
+  if (Array.isArray(roles)) desiredRoles = roles;
+  else if (Array.isArray(rol)) desiredRoles = rol;
+  else if (typeof rol === 'string' && rol.trim()) desiredRoles = [rol];
+  else desiredRoles = ['usuario'];
+
+  // Validar roles existentes y activos
+  for (const rname of desiredRoles) {
+    const r = await Roles.findByName(rname);
+    if (!r || r.deleted_at || r.is_active === false) {
+      throw new AppError(`Rol inválido: "${rname}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
     }
   }
-  // Si viene password en texto plano, lo hasheamos server-side
+
+  // Rol primario = Primero del arreglo
+  const primaryRole = desiredRoles[0];
   const finalHash = password ? await hashPassword(password, 12) : passwordHash;
-  const user = await Users.createUser({ nombre, correo, passwordHash: finalHash, rol, mustChangePassword });
-  await Audit.log({ usuario_id: req.user.id, accion: 'CREATE_USER', detalles: { usuario_id: user.usuario_id } });
-  res.status(201).json({ ok: true, data: user });
+  const user = await Users.createUser({ nombre, correo, passwordHash: finalHash, rol: primaryRole, mustChangePassword });
+
+  // Sincronizar roles en rol_usuario
+  for (const rname of desiredRoles) {
+    await UserRoles.assignRoleSafe({ targetUserId: user.usuario_id, roleIdOrName: rname, actorUserId: req.user.id });
+  }
+
+  const rolesAssigned = await UserRoles.getUserRoles(user.usuario_id);
+  await Audit.log({ usuario_id: req.user.id, accion: 'CREATE_USER', detalles: { usuario_id: user.usuario_id, roles: desiredRoles } });
+  res.status(201).json({ ok: true, data: { ...user, roles: rolesAssigned.map(r => r.nombre_rol) } });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
-  // Permitir actualizar con password en texto plano o con passwordHash directamente
   const { password, passwordHash } = req.body || {};
   const body = { ...req.body };
   if (password) {
     body.passwordHash = await hashPassword(password, 12);
-    delete body.password; // no almacenar el texto plano
+    delete body.password;
   } else if (passwordHash) {
     body.passwordHash = passwordHash;
   }
 
-  // Validar rol si viene en la actualización
-  if (body.rol !== undefined) {
-    const role = await Roles.findByName(body.rol);
-    if (!role || role.deleted_at || role.is_active === false) {
-      throw new AppError(`Rol inválido: "${body.rol}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
+  // Normalizar roles a arreglo si llegan
+  let desiredRoles = null; // null = no cambiar roles
+  if (Array.isArray(body.roles)) desiredRoles = body.roles;
+  else if (Array.isArray(body.rol)) desiredRoles = body.rol;
+  else if (typeof body.rol === 'string' && body.rol.trim()) desiredRoles = [body.rol];
+
+  if (desiredRoles) {
+    for (const rname of desiredRoles) {
+      const r = await Roles.findByName(rname);
+      if (!r || r.deleted_at || r.is_active === false) {
+        throw new AppError(`Rol inválido: "${rname}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
+      }
     }
+    body.rol = desiredRoles[0];
   }
 
-  const updated = await Users.updateUser(req.params.id, body);
+  const userId = Number(req.params.id);
+  const updated = await Users.updateUser(userId, body);
   if (!updated) throw new AppError('No encontrado', { status: 404, code: 'NOT_FOUND' });
+
+  if (desiredRoles) {
+    const current = await UserRoles.getUserRoles(userId);
+    const currentNames = current.map(r => r.nombre_rol);
+    const want = Array.from(new Set(desiredRoles));
+    const toAdd = want.filter(r => !currentNames.includes(r));
+    const toRemove = currentNames.filter(r => !want.includes(r));
+
+    for (const rname of toAdd) {
+      await UserRoles.assignRoleSafe({ targetUserId: userId, roleIdOrName: rname, actorUserId: req.user.id });
+    }
+    for (const rname of toRemove) {
+      await UserRoles.removeRoleSafe({ targetUserId: userId, roleIdOrName: rname, actorUserId: req.user.id });
+    }
+  }
 
   await Audit.log({ usuario_id: req.user.id, accion: 'UPDATE_USER', detalles: { usuario_id: req.params.id, cambios: req.body } });
   res.json({ ok: true, data: updated });

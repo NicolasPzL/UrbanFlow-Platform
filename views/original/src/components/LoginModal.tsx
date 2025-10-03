@@ -1,9 +1,8 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { mockUsers } from "../data/mockData";
 import { User } from "../types";
 
 interface LoginModalProps {
@@ -23,29 +22,35 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
     setError("");
     setIsLoading(true);
 
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Real login against backend API
+      const resp = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // send/receive HTTPOnly cookie
+        body: JSON.stringify({ correo: email, password }),
+      });
 
-    const user = mockUsers.find(u => u.email === email && u.status === 'active');
-    
-    if (user && password === "demo123") {
-      onLogin(user);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err?.error?.message || 'Error de autenticación');
+      }
+
+      // Fetch current user info
+      const me = await fetch('/api/auth/me', { credentials: 'include' });
+      if (!me.ok) throw new Error('No fue posible obtener la sesión');
+      const meJson = await me.json();
+
+      onLogin(meJson.data as User);
       onClose();
       setEmail("");
       setPassword("");
-    } else {
-      setError("Credenciales incorrectas o usuario inactivo");
+    } catch (ex: any) {
+      setError(ex?.message || 'Error iniciando sesión');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
-
-  const demoCredentials = [
-    { role: "Admin", email: "ana.garcia@urbanflow.com", password: "demo123" },
-    { role: "Operador", email: "carlos.mendoza@urbanflow.com", password: "demo123" },
-    { role: "Analista", email: "maria.rodriguez@urbanflow.com", password: "demo123" },
-    { role: "Ciudadano", email: "juan.perez@gmail.com", password: "demo123" }
-  ];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -87,23 +92,10 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
               {error}
             </div>
           )}
-          
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
           </Button>
         </form>
-        
-        <div className="border-t pt-4">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">Credenciales de Demo:</h4>
-          <div className="space-y-2">
-            {demoCredentials.map((cred, index) => (
-              <div key={index} className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
-                <div><strong>{cred.role}:</strong> {cred.email}</div>
-                <div><strong>Contraseña:</strong> {cred.password}</div>
-              </div>
-            ))}
-          </div>
-        </div>
       </DialogContent>
     </Dialog>
   );
