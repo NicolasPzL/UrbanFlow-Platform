@@ -55,6 +55,9 @@
             "typescript": "^5.9.3",
             "vite": "6.3.5"
       },
+      "engines": {
+            "node": ">=18.18.0"
+      },
       "scripts": {
             "dev": "vite",
             "build": "vite build"
