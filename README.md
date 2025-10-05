@@ -48,21 +48,20 @@ DB_PASSWORD=tu_password
 JWT_SECRET=super_secreto
 ```
 
-### 3) Instalar dependencias backend
-En la raíz del proyecto:
+### 3) Instalar dependencias backend (reproducible)
+En la raíz del proyecto (usa el lockfile):
 
 ```
-npm install
+npm ci o tambien npm i
 ```
 
 ### 4) Construir el frontend (Vite) dentro de `views/original/`
 El backend sirve automáticamente el build estático desde `/`.
 
 ```
-npm --prefix "views/original" install
-# Tipos de React/TS para evitar errores del IDE/compilación
-npm --prefix "views/original" i -D typescript @types/react @types/react-dom @types/node
-# Build de producción
+# instalación reproducible (usa package-lock.json del frontend)
+npm --prefix "views/original" ci
+# build de producción
 npm --prefix "views/original" run build
 ```
 
@@ -86,13 +85,18 @@ npm run dev
 - Si desarrollas el frontend con Vite por separado, usa puerto 5173 y proxy `/api` → `http://localhost:3000`.
 - Cookies HTTPOnly: cuando hagas fetch a `/api/*`, usa `credentials: 'include'`.
 
+> Importante: la carpeta correcta es `views/original/` (sin typos). Si ves errores como `views\origal`, corrige el nombre de carpeta o vuelve a clonar.
+
 ### 8) Errores comunes y soluciones
 - 400 `entity.parse.failed` en GET (body-parser):
   - No envíes `Content-Type: application/json` en GET/DELETE y deja el body vacío.
 - `path-to-regexp` error en fallback SPA (Express 5):
   - Ya está resuelto usando regex `app.get(/^(?!\/api\/).*/, ...)`.
 - JSX/TS en `views/original/`:
-  - Instalar dev-deps: `typescript @types/react @types/react-dom @types/node` y usar el `tsconfig.json` incluido.
+  - Ya están definidos en `devDependencies` del `views/original/package.json`. No instales manualmente.
+  - Si el IDE marca errores, ejecuta:
+    - `npm --prefix "views/original" ci`
+    - `npm --prefix "views/original" run build`
 
 ### 9) Multi-rol de usuarios (API)
 - Crear usuario aceptando uno o varios roles:
