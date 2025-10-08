@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import { Clock, Users, Zap, TrendingUp, MapPin, Calendar } from "lucide-react";
+import { Clock, Users, TrendingUp, MapPin, Calendar } from "lucide-react";
 
 interface PublicMetric {
   id: string;
@@ -21,83 +21,63 @@ interface ServiceUpdate {
   type: 'info' | 'maintenance' | 'improvement';
 }
 
+interface RouteInfo {
+  mainRoute: {
+    stations: string[];
+    totalTime: number;
+    activeStations: number;
+  };
+  schedules: {
+    weekdays: string;
+    saturdays: string;
+    sundays: string;
+  };
+  frequency: {
+    peak: string;
+    normal: string;
+    night: string;
+  };
+}
+
+interface CitizenDashboardData {
+  metrics: {
+    activePassengers: number;
+    waitTime: number;
+    efficiency: number;
+  };
+  serviceUpdates: ServiceUpdate[];
+  routeInfo: RouteInfo;
+  systemStatus: 'operational' | 'maintenance' | 'disruption';
+  stations: any[];
+  cabins: any[];
+}
+
 export function CitizenDashboard() {
-  const [metrics, setMetrics] = useState<PublicMetric[]>([]);
-  const [serviceUpdates, setServiceUpdates] = useState<ServiceUpdate[]>([]);
-  const [systemStatus, setSystemStatus] = useState<'operational' | 'maintenance' | 'disruption'>('operational');
+  const [data, setData] = useState<CitizenDashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Simular datos de métricas públicas en tiempo real
-    const updateMetrics = () => {
-      const currentTime = new Date();
-      const basePassengers = 1200 + Math.floor(Math.sin(currentTime.getMinutes() / 10) * 300);
-      const avgSpeed = 18 + Math.random() * 4; // 18-22 km/h
-      const waitTime = 2 + Math.random() * 3; // 2-5 minutos
-      
-      setMetrics([
-        {
-          id: 'passengers',
-          title: 'Pasajeros Activos',
-          value: basePassengers.toString(),
-          description: 'Usuarios en el sistema actualmente',
-          icon: Users,
-          status: basePassengers > 1400 ? 'attention' : 'good'
-        },
-        {
-          id: 'speed',
-          title: 'Velocidad Promedio',
-          value: `${avgSpeed.toFixed(1)} km/h`,
-          description: 'Velocidad promedio de las cabinas',
-          icon: Zap,
-          status: 'normal'
-        },
-        {
-          id: 'wait-time',
-          title: 'Tiempo de Espera',
-          value: `${waitTime.toFixed(1)} min`,
-          description: 'Tiempo promedio de espera en estaciones',
-          icon: Clock,
-          status: waitTime > 4 ? 'attention' : 'good'
-        },
-        {
-          id: 'efficiency',
-          title: 'Eficiencia del Servicio',
-          value: '94%',
-          description: 'Porcentaje de viajes completados a tiempo',
-          icon: TrendingUp,
-          status: 'good'
-        }
-      ]);
+    const fetchCitizenData = async () => {
+      try {
+        const response = await fetch('/api/citizen/dashboard');
+        if (!response.ok) throw new Error('No se pudo cargar el dashboard ciudadano');
+        const json = await response.json();
+        console.log('Datos del dashboard ciudadano recibidos:', json);
+        setData(json.data);
+      } catch (e: any) {
+        console.error('Error al cargar dashboard ciudadano:', e);
+        setError(e?.message || 'Error al cargar datos');
+      } finally {
+        setLoading(false);
+      }
     };
 
-    updateMetrics();
-    const interval = setInterval(updateMetrics, 2000);
-
-    // Simular actualizaciones del servicio
-    setServiceUpdates([
-      {
-        id: '1',
-        title: 'Mantenimiento Programado',
-        message: 'Mantenimiento preventivo en estación C7 programado para el próximo domingo de 6:00 a 8:00 AM.',
-        time: '2 horas',
-        type: 'maintenance'
-      },
-      {
-        id: '2',
-        title: 'Nueva Estación',
-        message: 'Próximamente: Nueva estación F4 conectará el centro comercial principal.',
-        time: '1 día',
-        type: 'improvement'
-      },
-      {
-        id: '3',
-        title: 'Horario Extendido',
-        message: 'Durante la temporada navideña, el servicio estará disponible hasta las 11:00 PM.',
-        time: '3 días',
-        type: 'info'
-      }
-    ]);
-
+    fetchCitizenData();
+    
+    // Actualizar datos cada 30 segundos
+    const interval = setInterval(fetchCitizenData, 30000);
+    
     return () => clearInterval(interval);
   }, []);
 
@@ -117,6 +97,72 @@ export function CitizenDashboard() {
     }
   };
 
+  // Generar métricas basadas en los datos de la API
+  const generateMetrics = () => {
+    if (!data) return [];
+    
+    return [
+      {
+        id: 'passengers',
+        title: 'Pasajeros Activos',
+        value: data.metrics.activePassengers.toString(),
+        description: 'Usuarios en el sistema actualmente',
+        icon: Users,
+        status: data.metrics.activePassengers > 50 ? 'attention' : 'good'
+      },
+      {
+        id: 'wait-time',
+        title: 'Tiempo de Espera',
+        value: `${data.metrics.waitTime} min`,
+        description: 'Tiempo promedio de espera en estaciones',
+        icon: Clock,
+        status: data.metrics.waitTime > 4 ? 'attention' : 'good'
+      },
+      {
+        id: 'efficiency',
+        title: 'Eficiencia del Servicio',
+        value: `${data.metrics.efficiency}%`,
+        description: 'Porcentaje de viajes completados a tiempo',
+        icon: TrendingUp,
+        status: data.metrics.efficiency > 90 ? 'good' : data.metrics.efficiency > 80 ? 'normal' : 'attention'
+      }
+    ];
+  };
+
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando información del servicio...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="text-red-600 text-xl mb-4">Error al cargar la información</div>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="text-gray-600 text-xl mb-4">No hay datos disponibles</div>
+        </div>
+      </div>
+    );
+  }
+
+  const metrics = generateMetrics();
+
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
       {/* Header */}
@@ -128,17 +174,17 @@ export function CitizenDashboard() {
         
         {/* System Status */}
         <div className="flex items-center justify-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${systemStatus === 'operational' ? 'bg-green-500' : systemStatus === 'maintenance' ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
+          <div className={`w-3 h-3 rounded-full ${data.systemStatus === 'operational' ? 'bg-green-500' : data.systemStatus === 'maintenance' ? 'bg-yellow-500' : 'bg-red-500'}`}></div>
           <span className="font-medium">
-            {systemStatus === 'operational' ? 'Sistema Operativo' : 
-             systemStatus === 'maintenance' ? 'Mantenimiento Programado' : 
+            {data.systemStatus === 'operational' ? 'Sistema Operativo' : 
+             data.systemStatus === 'maintenance' ? 'Mantenimiento Programado' : 
              'Servicio Interrumpido'}
           </span>
         </div>
       </div>
 
       {/* Métricas Principales */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {metrics.map((metric) => {
           const IconComponent = metric.icon;
           return (
@@ -175,25 +221,25 @@ export function CitizenDashboard() {
             <div className="space-y-2">
               <h3 className="font-medium">Ruta Principal</h3>
               <div className="space-y-1 text-sm text-gray-600">
-                <p>A1 → B3 → C7 → D2 → E9</p>
-                <p>Tiempo total: ~25 minutos</p>
-                <p>5 estaciones activas</p>
+                <p>{data.routeInfo.mainRoute.stations.join(' → ')}</p>
+                <p>Tiempo total: ~{data.routeInfo.mainRoute.totalTime} minutos</p>
+                <p>{data.routeInfo.mainRoute.activeStations} estaciones activas</p>
               </div>
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Horarios de Servicio</h3>
               <div className="space-y-1 text-sm text-gray-600">
-                <p>Lunes a Viernes: 5:30 AM - 10:30 PM</p>
-                <p>Sábados: 6:00 AM - 11:00 PM</p>
-                <p>Domingos: 7:00 AM - 9:30 PM</p>
+                <p>Lunes a Viernes: {data.routeInfo.schedules.weekdays}</p>
+                <p>Sábados: {data.routeInfo.schedules.saturdays}</p>
+                <p>Domingos: {data.routeInfo.schedules.sundays}</p>
               </div>
             </div>
             <div className="space-y-2">
               <h3 className="font-medium">Frecuencia</h3>
               <div className="space-y-1 text-sm text-gray-600">
-                <p>Hora pico: Cada 2-3 minutos</p>
-                <p>Hora normal: Cada 4-5 minutos</p>
-                <p>Hora nocturna: Cada 6-8 minutos</p>
+                <p>Hora pico: {data.routeInfo.frequency.peak}</p>
+                <p>Hora normal: {data.routeInfo.frequency.normal}</p>
+                <p>Hora nocturna: {data.routeInfo.frequency.night}</p>
               </div>
             </div>
           </div>
@@ -210,7 +256,7 @@ export function CitizenDashboard() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {serviceUpdates.map((update) => (
+            {data.serviceUpdates.map((update) => (
               <div key={update.id} className="border-l-4 border-blue-200 pl-4 py-2">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
