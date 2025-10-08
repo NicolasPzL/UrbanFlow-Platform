@@ -217,7 +217,7 @@ CREATE TABLE IF NOT EXISTS public.usuarios
     nombre character varying(100) COLLATE pg_catalog."default" NOT NULL,
     correo character varying(100) COLLATE pg_catalog."default" NOT NULL,
     password_hash character varying(255) COLLATE pg_catalog."default" NOT NULL,
-    rol character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'usuario',
+    rol character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'usuario'::character varying,
     is_active boolean NOT NULL DEFAULT true,
     creado_en timestamp with time zone NOT NULL DEFAULT now(),
     actualizado_en timestamp with time zone NOT NULL DEFAULT now(),
