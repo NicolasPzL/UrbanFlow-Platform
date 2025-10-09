@@ -3,41 +3,94 @@ import AppError from '../errors/AppError.js';
 import * as Roles from '../models/rolModel.js';
 import * as Audit from '../models/auditoriaModel.js';
 
+// Roles predefinidos según el documento
+const PREDEFINED_ROLES = {
+  ADMIN: 'admin',
+  USER: 'usuario'
+};
+
 export const list = asyncHandler(async (req, res) => {
-  const { search, isActive, includeDeleted, limit, offset, sortBy, sortDir } = req.query;
-  const data = await Roles.list({
-    search: search || '',
-    isActive: isActive === undefined ? null : isActive === 'true',
-    includeDeleted: includeDeleted === 'true',
-    limit: Number(limit) || 20,
-    offset: Number(offset) || 0,
-    sortBy: sortBy || 'rol_id',
-    sortDir: sortDir || 'asc'
+  // Solo permitir listar los roles predefinidos
+  const predefinedRoles = await Roles.getPredefinedRoles();
+  
+  res.json({ 
+    ok: true, 
+    data: predefinedRoles, 
+    meta: { 
+      total: predefinedRoles.length, 
+      limit: predefinedRoles.length, 
+      offset: 0 
+    } 
   });
-  res.json({ ok: true, data: data.items, meta: { total: data.total, limit: Number(limit) || 20, offset: Number(offset) || 0 } });
 });
 
+export const getById = asyncHandler(async (req, res) => {
+  const role = await Roles.getRoleById(req.params.id);
+  if (!role) throw new AppError('Rol no encontrado', { status: 404, code: 'NOT_FOUND' });
+  
+  res.json({ ok: true, data: role });
+});
+
+// CREATE deshabilitado para roles predefinidos
 export const create = asyncHandler(async (req, res) => {
-  const { nombre_rol } = req.body;
-  if (!nombre_rol) throw new AppError('Datos inválidos', { status: 400, code: 'VALIDATION_ERROR' });
-
-  const role = await Roles.createRole(req.body);
-  await Audit.log({ usuario_id: req.user.id, accion: 'CREATE_ROLE', detalles: { rol_id: role.rol_id } });
-  res.status(201).json({ ok: true, data: role });
+  throw new AppError('No se pueden crear nuevos roles. Use los roles predefinidos: admin, usuario', { 
+    status: 403, 
+    code: 'ROLES_LOCKED' 
+  });
 });
 
+// UPDATE limitado para no modificar roles predefinidos críticos
 export const update = asyncHandler(async (req, res) => {
-  const role = await Roles.updateRole(req.params.id, req.body);
-  if (!role) throw new AppError('No encontrado', { status: 404, code: 'NOT_FOUND' });
-
-  await Audit.log({ usuario_id: req.user.id, accion: 'UPDATE_ROLE', detalles: { rol_id: req.params.id, cambios: req.body } });
-  res.json({ ok: true, data: role });
+  const { id } = req.params;
+  const { nombre_rol, descripcion } = req.body;
+  
+  // Verificar si es un rol predefinido
+  const role = await Roles.getRoleById(id);
+  if (!role) throw new AppError('Rol no encontrado', { status: 404, code: 'NOT_FOUND' });
+  
+  if (role.nombre_rol === PREDEFINED_ROLES.ADMIN || role.nombre_rol === PREDEFINED_ROLES.USER) {
+    throw new AppError('No se pueden modificar los roles predefinidos del sistema', { 
+      status: 403, 
+      code: 'PREDEFINED_ROLE' 
+    });
+  }
+  
+  const updatedRole = await Roles.updateRole(id, { descripcion }); // Solo permitir cambiar descripción
+  await Audit.log({ 
+    usuario_id: req.user.id, 
+    accion: 'UPDATE_ROLE', 
+    detalles: { rol_id: id, cambios: req.body } 
+  });
+  
+  res.json({ ok: true, data: updatedRole });
 });
 
+// SOFT DELETE deshabilitado para roles predefinidos
 export const softDelete = asyncHandler(async (req, res) => {
-  const role = await Roles.softDeleteRole(req.params.id);
-  if (!role) throw new AppError('No encontrado', { status: 404, code: 'NOT_FOUND' });
+  const { id } = req.params;
+  
+  const role = await Roles.getRoleById(id);
+  if (!role) throw new AppError('Rol no encontrado', { status: 404, code: 'NOT_FOUND' });
+  
+  if (role.nombre_rol === PREDEFINED_ROLES.ADMIN || role.nombre_rol === PREDEFINED_ROLES.USER) {
+    throw new AppError('No se pueden eliminar los roles predefinidos del sistema', { 
+      status: 403, 
+      code: 'PREDEFINED_ROLE' 
+    });
+  }
+  
+  const deletedRole = await Roles.softDeleteRole(id);
+  await Audit.log({ 
+    usuario_id: req.user.id, 
+    accion: 'DELETE_ROLE', 
+    detalles: { rol_id: id } 
+  });
+  
+  res.json({ ok: true, data: deletedRole });
+});
 
-  await Audit.log({ usuario_id: req.user.id, accion: 'DELETE_ROLE', detalles: { rol_id: req.params.id } });
-  res.json({ ok: true, data: role });
+// Nuevo método para obtener roles predefinidos específicos
+export const getPredefinedRoles = asyncHandler(async (req, res) => {
+  const predefinedRoles = await Roles.getPredefinedRoles();
+  res.json({ ok: true, data: predefinedRoles });
 });
