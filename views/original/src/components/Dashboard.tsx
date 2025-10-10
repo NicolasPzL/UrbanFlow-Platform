@@ -3,19 +3,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle, ChevronDown } from "lucide-react";
 
 type DashboardData = {
   kpis?: { id: string; title: string; value: string; change: number; status: 'positive'|'negative'|'neutral' }[];
-  vibrationSeries?: { time: string; vibration: number }[];
+  vibrationSeries?: { time: string; vibration: number; cabinId?: string }[];
   passengersSeries?: { hour: string; passengers: number }[];
   cabins?: any[];
+  historicalData?: any[];
 };
 
 export function Dashboard() {
   const [data, setData] = useState<DashboardData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedCabin, setSelectedCabin] = useState<string>('CB001');
 
   useEffect(() => {
     (async () => {
@@ -23,9 +25,10 @@ export function Dashboard() {
         const resp = await fetch('/api/dashboard', { credentials: 'include' });
         if (!resp.ok) throw new Error('No se pudo cargar el dashboard');
         const json = await resp.json();
-        // Espera { ok, data } pero aceptamos flexibilidad
+        console.log('Datos del dashboard recibidos:', json);
         setData(json.data || {});
       } catch (e: any) {
+        console.error('Error al cargar dashboard:', e);
         setError(e?.message || 'Error al cargar');
       } finally {
         setLoading(false);
@@ -33,14 +36,31 @@ export function Dashboard() {
     })();
   }, []);
 
-  const historicalData = Array.isArray(data.cabins)
+  const historicalData = Array.isArray(data.historicalData) 
+    ? data.historicalData 
+    : Array.isArray(data.cabins)
     ? data.cabins.map((c: any) => ({
-        cabinId: c.id ?? 'CB', timestamp: '', position: c.position ?? {x:0,y:0}, velocity: c.velocity ?? 0,
+        cabinId: c.id ?? 'CB', timestamp: '2025-01-09 14:30:00', position: c.position ?? {x:0,y:0}, velocity: c.velocity ?? 0,
         vibration: c.vibrationLast ?? 0, passengers: c.passengers ?? 0, status: c.status ?? 'normal'
       }))
     : [];
 
-  const vibrationChartData = Array.isArray(data.vibrationSeries) ? data.vibrationSeries : [];
+  // Filtrar datos de vibración basados en la cabina seleccionada
+  const vibrationChartData = Array.isArray(data.vibrationSeries) 
+    ? data.vibrationSeries.filter(item => {
+        // Si los datos incluyen cabinId, filtrar por él
+        if (item.cabinId) {
+          const matches = item.cabinId === selectedCabin;
+          console.log(`Filtrando ${item.cabinId} vs ${selectedCabin}: ${matches}`);
+          return matches;
+        }
+        // Si no hay cabinId, asumir que son datos de la cabina seleccionada
+        return true;
+      })
+    : [];
+
+  console.log('Datos de vibración filtrados:', vibrationChartData);
+  console.log('Cabina seleccionada:', selectedCabin);
   const passengersChartData = Array.isArray(data.passengersSeries) ? data.passengersSeries : [];
 
   const getStatusColor = (status: string) => {
@@ -74,6 +94,28 @@ export function Dashboard() {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Cargando dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 text-xl mb-4">Error al cargar el dashboard</div>
+          <p className="text-gray-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -82,6 +124,13 @@ export function Dashboard() {
           <h1 className="text-3xl font-bold text-gray-900">Dashboard Operacional</h1>
           <p className="text-gray-600 mt-2">
             Monitoreo en tiempo real del sistema Urban Flow
+          </p>
+        </div>
+
+        {/* Debug Info - Temporal */}
+        <div className="mb-4 p-4 bg-blue-100 border border-blue-300 rounded">
+          <p className="text-sm text-blue-800">
+            Debug: Cabina seleccionada: {selectedCabin} | Datos de vibración: {vibrationChartData.length} puntos
           </p>
         </div>
 
@@ -113,7 +162,26 @@ export function Dashboard() {
         <div className="grid lg:grid-cols-2 gap-6 mb-8">
           <Card>
             <CardHeader>
-              <CardTitle>Vibración en Tiempo Real (CB001)</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>Vibración en Tiempo Real</CardTitle>
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="cabin-select" className="text-sm font-medium text-gray-700">
+                    Cabina:
+                  </label>
+                  <select
+                    id="cabin-select"
+                    value={selectedCabin}
+                    onChange={(e) => setSelectedCabin(e.target.value)}
+                    className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    {(data.cabins || []).map((cabin: any) => (
+                      <option key={cabin.id} value={cabin.id}>
+                        {cabin.id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
@@ -123,6 +191,7 @@ export function Dashboard() {
                   <YAxis domain={[0, 3]} />
                   <Tooltip 
                     formatter={(value: number) => [`${value} RMS`, 'Vibración']}
+                    labelFormatter={(label) => `${selectedCabin} - ${label}`}
                   />
                   <Line 
                     type="monotone" 

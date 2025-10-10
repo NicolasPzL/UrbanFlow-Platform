@@ -17,6 +17,7 @@ import authRoutes from './routes/authRoutes.js';
 import roleRoutes from './routes/roleRoutes.js';
 import dashboardRoutes from './routes/dashboardRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
+import citizenRoutes from './routes/citizenRoutes.js';
 
 // Importar middlewares
 import auth from './middlewares/auth.js';
@@ -113,6 +114,9 @@ app.use('/api/roles', requireAuth, requireRole('admin'), roleRoutes);
 
 // Mapa público (sin autenticación)
 app.use('/api/map', publicRoutes);
+
+// Dashboard ciudadano (público, sin autenticación)
+app.use('/api/citizen', citizenRoutes);
 
 // Dashboard (requiere autenticación)
 app.use('/api/dashboard', requireAuth, dashboardRoutes);
