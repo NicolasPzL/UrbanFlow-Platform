@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "./components/Navbar";
 import { LoginModal } from "./components/LoginModal";
 import { LandingPage } from "./components/LandingPage";
@@ -19,6 +19,69 @@ export default function App() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
+  // Normaliza la forma de usuario que viene del backend a nuestro tipo User
+  const normalizeUser = (rawInput: any): User => {
+    const raw = rawInput?.user ?? rawInput; // soporta { data: { user: {...} }}
+
+    // Normalizar roles a strings en minúsculas
+    const rawRoles = Array.isArray(raw?.roles)
+      ? raw.roles
+      : (raw?.rol || raw?.role ? [raw?.rol ?? raw?.role] : []);
+    const roleStrings: string[] = rawRoles.map((r: any) => {
+      if (typeof r === 'string') return r.toLowerCase();
+      if (typeof r === 'object' && r) {
+        const name = (r.nombre || r.name || r.codigo || r.code || r.slug || '').toString();
+        return name.toLowerCase();
+      }
+      return '';
+    });
+
+    const normalizeName = (v: string) => v?.normalize?.('NFD').replace(/[\u0300-\u036f]/g, '') || v; // quita tildes
+
+    const pickRole = (): User["role"] => {
+      const set = new Set(roleStrings.map(s => normalizeName(s)));
+      // aceptar español y mayúsculas
+      if (set.has('admin') || set.has('administrador')) return 'admin';
+      if (set.has('analyst') || set.has('analista')) return 'analyst';
+      if (set.has('operator') || set.has('operador') || set.has('operario')) return 'operator';
+      if (set.has('citizen') || set.has('ciudadano')) return 'citizen';
+      // fallback a rol singular
+      const r = normalizeName((raw?.rol || roleStrings[0] || '').toString().toLowerCase());
+      if (['admin','administrador'].includes(r)) return 'admin';
+      if (['analyst','analista'].includes(r)) return 'analyst';
+      if (['operator','operador','operario'].includes(r)) return 'operator';
+      if (['citizen','ciudadano'].includes(r)) return 'citizen';
+      return 'operator';
+    };
+
+    return {
+      id: String(raw?.usuario_id ?? raw?.id ?? ''),
+      name: raw?.nombre ?? raw?.name ?? '',
+      email: raw?.correo ?? raw?.email ?? '',
+      role: pickRole(),
+      status: raw?.is_active === false ? 'inactive' : 'active',
+      lastLogin: raw?.last_login ?? raw?.lastLogin ?? undefined,
+    };
+  };
+
+  // Hidrata sesión al cargar la app
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!me.ok) return; // no autenticado
+        const meJson = await me.json();
+        if (meJson?.data) {
+          // debug mínimo (una sola vez)
+          try { console.debug?.('[auth/me]', meJson.data); } catch {}
+          setAuthState({ isAuthenticated: true, user: normalizeUser(meJson.data) });
+        }
+      } catch {
+        // ignorar
+      }
+    })();
+  }, []);
+
   const handleLogin = (user: User) => {
     setAuthState({
       isAuthenticated: true,
@@ -31,11 +94,11 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    setAuthState({
-      isAuthenticated: false,
-      user: null
-    });
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+    setAuthState({ isAuthenticated: false, user: null });
     
     // Redirect from protected views after logout
     if (currentView === 'geoportal-detail') {

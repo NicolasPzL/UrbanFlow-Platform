@@ -41,7 +41,46 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
       if (!me.ok) throw new Error('No fue posible obtener la sesión');
       const meJson = await me.json();
 
-      onLogin(meJson.data as User);
+      // Normalizar usuario del backend a tipo User del frontend
+      const rawInput = meJson.data;
+      const raw = rawInput?.user ?? rawInput;
+      try { console.debug?.('[auth/me after login]', raw); } catch {}
+
+      const rawRoles = Array.isArray(raw?.roles)
+        ? raw.roles
+        : (raw?.rol || raw?.role ? [raw?.rol ?? raw?.role] : []);
+      const roleStrings: string[] = rawRoles.map((r: any) => {
+        if (typeof r === 'string') return r.toLowerCase();
+        if (typeof r === 'object' && r) {
+          const name = (r.nombre || r.name || r.codigo || r.code || r.slug || '').toString();
+          return name.toLowerCase();
+        }
+        return '';
+      });
+      const normalizeName = (v: string) => v?.normalize?.('NFD').replace(/[\u0300-\u036f]/g, '') || v;
+      const pickRole = (): User['role'] => {
+        const set = new Set(roleStrings.map(s => normalizeName(s)));
+        if (set.has('admin') || set.has('administrador')) return 'admin';
+        if (set.has('analyst') || set.has('analista')) return 'analyst';
+        if (set.has('operator') || set.has('operador') || set.has('operario')) return 'operator';
+        if (set.has('citizen') || set.has('ciudadano')) return 'citizen';
+        const r = normalizeName((raw?.rol || raw?.role || roleStrings[0] || '').toString().toLowerCase());
+        if (['admin','administrador'].includes(r)) return 'admin';
+        if (['analyst','analista'].includes(r)) return 'analyst';
+        if (['operator','operador','operario'].includes(r)) return 'operator';
+        if (['citizen','ciudadano'].includes(r)) return 'citizen';
+        return 'operator';
+      };
+      const normalized: User = {
+        id: String(raw?.usuario_id ?? raw?.id ?? ''),
+        name: raw?.nombre ?? raw?.name ?? '',
+        email: raw?.correo ?? raw?.email ?? '',
+        role: pickRole(),
+        status: raw?.is_active === false ? 'inactive' : 'active',
+        lastLogin: raw?.last_login ?? raw?.lastLogin ?? undefined,
+      };
+
+      onLogin(normalized);
       onClose();
       setEmail("");
       setPassword("");

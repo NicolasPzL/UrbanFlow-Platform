@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "./ui/dialog";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Checkbox } from "./ui/checkbox";
 // Dejar de usar datos mock. Consumir backend.
 type UIUser = {
   id: string;
@@ -25,12 +26,23 @@ export function UserManagement() {
   const [editingUser, setEditingUser] = useState<UIUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newUser, setNewUser] = useState({
+  type RoleUnion = "admin" | "operator" | "analyst";
+  type StatusUnion = "active" | "inactive";
+  type NewUser = { name: string; email: string; role: RoleUnion; status: StatusUnion };
+
+  const normalizeRole = (r: string): RoleUnion => (r === 'admin' || r === 'operator' || r === 'analyst') ? r : 'operator';
+  const normalizeStatus = (s: string): StatusUnion => (s === 'inactive' ? 'inactive' : 'active');
+
+  const [newUser, setNewUser] = useState<NewUser>({
     name: "",
     email: "",
-    role: "operator" as const,
-    status: "active" as const
+    role: "operator",
+    status: "active"
   });
+  // selección múltiple de roles (crear)
+  const [newUserRoles, setNewUserRoles] = useState<RoleUnion[]>(["operator"]);
+  // selección múltiple de roles (editar)
+  const [editUserRoles, setEditUserRoles] = useState<RoleUnion[]>([]);
 
   // Cargar usuarios desde backend (requiere admin)
   useEffect(() => {
@@ -44,7 +56,7 @@ export function UserManagement() {
           id: String(u.usuario_id ?? u.id ?? ''),
           name: u.nombre ?? u.name ?? '',
           email: u.correo ?? u.email ?? '',
-          role: u.rol ?? u.role ?? 'operator',
+          role: normalizeRole(String(u.rol ?? u.role ?? 'operator')),
           status: (u.is_active === false ? 'inactive' : 'active'),
           lastLogin: u.last_login ?? u.lastLogin ?? undefined,
         }));
@@ -57,7 +69,7 @@ export function UserManagement() {
     })();
   }, []);
 
-  const filteredUsers = users.filter(user =>
+  const filteredUsers = users.filter((user: UIUser) =>
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -68,7 +80,13 @@ export function UserManagement() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ nombre: newUser.name, correo: newUser.email, rol: newUser.role, password: 'Usuario123!' }),
+        body: JSON.stringify({
+          nombre: newUser.name,
+          correo: newUser.email,
+          rol: (newUserRoles[0] ?? newUser.role),
+          roles: newUserRoles,
+          password: 'Usuario123!'
+        }),
       });
       if (!resp.ok) throw new Error('No se pudo crear el usuario');
       const created = await resp.json();
@@ -77,26 +95,42 @@ export function UserManagement() {
         id: String(u.usuario_id ?? u.id ?? ''),
         name: u.nombre ?? '',
         email: u.correo ?? '',
-        role: u.rol ?? 'operator',
+        role: normalizeRole(String(u.rol ?? 'operator')),
         status: (u.is_active === false ? 'inactive' : 'active'),
         lastLogin: u.last_login ?? undefined,
       };
       setUsers([...users, mapped]);
       setNewUser({ name: "", email: "", role: "operator", status: "active" });
+      setNewUserRoles(["operator"]);
       setIsCreateModalOpen(false);
     } catch (e) {
       alert('Error creando usuario');
     }
   };
 
-  const handleEditUser = (user: User) => {
+  const handleEditUser = async (user: UIUser) => {
     setEditingUser(user);
     setNewUser({
       name: user.name,
       email: user.email,
-      role: user.role,
-      status: user.status
+      role: normalizeRole(String(user.role)),
+      status: normalizeStatus(String(user.status))
     });
+    // obtener roles actuales del usuario para preseleccionar
+    try {
+      const r = await fetch(`/api/users/${user.id}`, { credentials: 'include' });
+      if (r.ok) {
+        const j = await r.json();
+        const rolesArr: string[] = Array.isArray(j?.data?.roles) ? j.data.roles : [];
+        const normalized = rolesArr.map(x => normalizeRole(String(x)));
+        const uniq = Array.from(new Set(normalized)) as RoleUnion[];
+        setEditUserRoles(uniq.length ? uniq : [normalizeRole(String(user.role))]);
+      } else {
+        setEditUserRoles([normalizeRole(String(user.role))]);
+      }
+    } catch {
+      setEditUserRoles([normalizeRole(String(user.role))]);
+    }
   };
 
   const handleUpdateUser = async () => {
@@ -106,12 +140,20 @@ export function UserManagement() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ nombre: newUser.name, correo: newUser.email, rol: newUser.role, is_active: newUser.status === 'active' }),
+        body: JSON.stringify({
+          nombre: newUser.name,
+          correo: newUser.email,
+          rol: (editUserRoles[0] ?? newUser.role),
+          roles: editUserRoles,
+          is_active: newUser.status === 'active'
+        }),
       });
       if (!resp.ok) throw new Error('No se pudo actualizar');
-      setUsers(users.map(user => user.id === editingUser.id ? { ...user, ...newUser } : user));
+      // actualizar vista con rol primario
+      setUsers(users.map(user => user.id === editingUser.id ? { ...user, ...newUser, role: (editUserRoles[0] ?? newUser.role) } : user));
       setEditingUser(null);
       setNewUser({ name: "", email: "", role: "operator", status: "active" });
+      setEditUserRoles([]);
     } catch (e) {
       alert('Error actualizando usuario');
     }
@@ -140,13 +182,13 @@ export function UserManagement() {
     return status === 'active' ? 'default' : 'destructive';
   };
 
-  const roleLabels = {
+  const roleLabels: Record<string, string> = {
     admin: 'Administrador',
     operator: 'Operador',
     analyst: 'Analista'
   };
 
-  const statusLabels = {
+  const statusLabels: Record<string, string> = {
     active: 'Activo',
     inactive: 'Inactivo'
   };
@@ -180,7 +222,7 @@ export function UserManagement() {
                   <Input
                     id="name"
                     value={newUser.name}
-                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUser({ ...newUser, name: e.target.value })}
                     placeholder="Ej. Juan Pérez"
                   />
                 </div>
@@ -190,26 +232,31 @@ export function UserManagement() {
                     id="email"
                     type="email"
                     value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUser({ ...newUser, email: e.target.value })}
                     placeholder="juan.perez@urbanflow.com"
                   />
                 </div>
                 <div>
-                  <Label htmlFor="role">Rol</Label>
-                  <Select value={newUser.role} onValueChange={(value: any) => setNewUser({ ...newUser, role: value })}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="operator">Operador</SelectItem>
-                      <SelectItem value="analyst">Analista</SelectItem>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Roles</Label>
+                  <div className="mt-2 grid grid-cols-3 gap-3">
+                    {(["operator","analyst","admin"] as RoleUnion[]).map(r => (
+                      <label key={r} className="flex items-center space-x-2">
+                        <Checkbox
+                          checked={newUserRoles.includes(r)}
+                          onCheckedChange={(checked: boolean | 'indeterminate') => {
+                            const c = Boolean(checked);
+                            setNewUserRoles(prev => c ? Array.from(new Set([...prev, r])) : prev.filter(x => x !== r));
+                            if (c && newUser.role !== r) setNewUser({ ...newUser, role: r });
+                          }}
+                        />
+                        <span>{r === 'admin' ? 'Administrador' : r === 'analyst' ? 'Analista' : 'Operador'}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="status">Estado</Label>
-                  <Select value={newUser.status} onValueChange={(value: any) => setNewUser({ ...newUser, status: value })}>
+                  <Select value={newUser.status} onValueChange={(value: string) => setNewUser({ ...newUser, status: normalizeStatus(value) })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -291,7 +338,7 @@ export function UserManagement() {
                 <Input
                   placeholder="Buscar usuarios..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                   className="pl-10 w-64"
                 />
               </div>
@@ -311,7 +358,7 @@ export function UserManagement() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers.map((user) => (
+                {filteredUsers.map((user: UIUser) => (
                   <TableRow key={user.id}>
                     <TableCell>
                       <div>
@@ -321,12 +368,12 @@ export function UserManagement() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={getRoleBadgeVariant(user.role)}>
-                        {roleLabels[user.role]}
+                        {roleLabels[user.role] || String(user.role)}
                       </Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant={getStatusBadgeVariant(user.status)}>
-                        {statusLabels[user.status]}
+                        {statusLabels[user.status] || String(user.status)}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -334,7 +381,7 @@ export function UserManagement() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end space-x-2">
-                        <Dialog open={editingUser?.id === user.id} onOpenChange={(open) => !open && setEditingUser(null)}>
+                        <Dialog open={editingUser?.id === user.id} onOpenChange={(open: boolean) => !open && setEditingUser(null)}>
                           <DialogTrigger asChild>
                             <Button 
                               variant="outline" 
@@ -354,7 +401,7 @@ export function UserManagement() {
                                 <Input
                                   id="edit-name"
                                   value={newUser.name}
-                                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUser({ ...newUser, name: e.target.value })}
                                 />
                               </div>
                               <div>
@@ -363,25 +410,30 @@ export function UserManagement() {
                                   id="edit-email"
                                   type="email"
                                   value={newUser.email}
-                                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewUser({ ...newUser, email: e.target.value })}
                                 />
                               </div>
                               <div>
-                                <Label htmlFor="edit-role">Rol</Label>
-                                <Select value={newUser.role} onValueChange={(value: any) => setNewUser({ ...newUser, role: value })}>
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="operator">Operador</SelectItem>
-                                    <SelectItem value="analyst">Analista</SelectItem>
-                                    <SelectItem value="admin">Administrador</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <Label htmlFor="edit-role">Roles</Label>
+                                <div className="mt-2 grid grid-cols-3 gap-3">
+                                  {(["operator","analyst","admin"] as RoleUnion[]).map(r => (
+                                    <label key={r} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        checked={editUserRoles.includes(r)}
+                                        onCheckedChange={(checked: boolean | 'indeterminate') => {
+                                          const c = Boolean(checked);
+                                          setEditUserRoles(prev => c ? Array.from(new Set([...prev, r])) : prev.filter(x => x !== r));
+                                          if (c && newUser.role !== r) setNewUser({ ...newUser, role: r });
+                                        }}
+                                      />
+                                      <span>{r === 'admin' ? 'Administrador' : r === 'analyst' ? 'Analista' : 'Operador'}</span>
+                                    </label>
+                                  ))}
+                                </div>
                               </div>
                               <div>
                                 <Label htmlFor="edit-status">Estado</Label>
-                                <Select value={newUser.status} onValueChange={(value: any) => setNewUser({ ...newUser, status: value })}>
+                                <Select value={newUser.status} onValueChange={(value: string) => setNewUser({ ...newUser, status: normalizeStatus(value) })}>
                                   <SelectTrigger>
                                     <SelectValue />
                                   </SelectTrigger>
