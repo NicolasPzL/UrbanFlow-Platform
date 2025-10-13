@@ -40,3 +40,5 @@ venv/
 coverage/
 *.log
 *.tmp
+
+node_modules
