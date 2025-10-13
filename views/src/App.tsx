@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navbar } from "./components/Navbar";
 import { LoginModal } from "./components/LoginModal";
 import { LandingPage } from "./components/LandingPage";
@@ -19,74 +19,109 @@ export default function App() {
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
 
+  // Normaliza la forma del usuario que viene del backend a nuestro tipo User
+  const normalizeUser = (rawInput: any): User => {
+    const raw = rawInput?.user ?? rawInput; // soporta { data: { user: {...} }}
+
+    // Normalizar el rol (ya no roles múltiples)
+    const rawRol = raw?.rol ?? raw?.role ?? '';
+    const normalizeName = (v: string) =>
+      v?.normalize?.('NFD').replace(/[\u0300-\u036f]/g, '')?.toLowerCase() || '';
+
+    const r = normalizeName(rawRol);
+    let finalRol: User["rol"] = 'cliente';
+
+    if (['admin', 'administrador'].includes(r)) finalRol = 'admin';
+    else if (['analyst', 'analista'].includes(r)) finalRol = 'analista';
+    else if (['operator', 'operador', 'operario'].includes(r)) finalRol = 'operador';
+    else if (['client', 'cliente'].includes(r)) finalRol = 'cliente';
+
+    return {
+      id: String(raw?.usuario_id ?? raw?.id ?? ''),
+      name: raw?.nombre ?? raw?.name ?? '',
+      email: raw?.correo ?? raw?.email ?? '',
+      rol: finalRol,
+      status: raw?.is_active === false ? 'inactive' : 'active',
+      lastLogin: raw?.last_login ?? raw?.lastLogin ?? undefined,
+    };
+  };
+
+  // Hidrata sesión al cargar la app
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await fetch('/api/auth/me', { credentials: 'include' });
+        if (!me.ok) return; // no autenticado
+        const meJson = await me.json();
+        if (meJson?.data) {
+          console.debug?.('[auth/me]', meJson.data);
+          setAuthState({ isAuthenticated: true, user: normalizeUser(meJson.data) });
+        }
+      } catch {
+        // ignorar
+      }
+    })();
+  }, []);
+
   const handleLogin = (user: User) => {
     setAuthState({
       isAuthenticated: true,
       user
     });
-    
-    // Redirect from public geoportal to detailed geoportal after login
+
+    // Si estaba en geoportal público, pasa al detallado
     if (currentView === 'geoportal-public') {
       setCurrentView('geoportal-detail');
     }
   };
 
-  const handleLogout = () => {
-    setAuthState({
-      isAuthenticated: false,
-      user: null
-    });
-    
-    // Redirect from protected views after logout
-    if (currentView === 'geoportal-detail') {
-      setCurrentView('geoportal-public');
-    } else if (currentView === 'dashboard' || currentView === 'user-management' || currentView === 'citizen-dashboard') {
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    } catch {}
+    setAuthState({ isAuthenticated: false, user: null });
+
+    if (['geoportal-detail', 'dashboard', 'user-management', 'citizen-dashboard'].includes(currentView)) {
       setCurrentView('landing');
     }
   };
 
   const handleViewChange = (view: AppView) => {
-    // Check if view requires authentication
     const protectedViews: AppView[] = ['dashboard', 'geoportal-detail', 'user-management', 'citizen-dashboard'];
-    
+
     if (protectedViews.includes(view) && !authState.isAuthenticated) {
       setIsLoginModalOpen(true);
       return;
     }
-    
-    // Check if user-management requires admin role
-    if (view === 'user-management' && authState.user?.rol !== 'admin') {
-      return; // Silently ignore if not admin
+
+    // Solo admin puede acceder a gestión de usuarios
+    if (view === 'user-management' && authState.user?.rol !== 'admin') return;
+
+    // cliente no puede acceder a vistas restringidas
+    if (authState.user?.rol === 'cliente') {
+      const restricted: AppView[] = ['dashboard', 'geoportal-detail', 'user-management'];
+      if (restricted.includes(view)) return;
     }
-    
-    // Prevent citizen users from accessing restricted views
-    if (authState.user?.rol === 'ciudadano') {
-      const citizenRestrictedViews: AppView[] = ['dashboard', 'geoportal-detail', 'user-management'];
-      if (citizenRestrictedViews.includes(view)) {
-        return; // Silently ignore if citizen tries to access restricted views
-      }
-    }
-    
-    // Prevent non-citizen authenticated users from accessing public geoportal (redirect to detailed)
-    if (view === 'geoportal-public' && authState.isAuthenticated && authState.user?.rol !== 'ciudadano') {
-      setCurrentView('geoportal-detail'); // Redirect to detailed geoportal
+
+    // Usuario autenticado no-cliente no puede volver al geoportal público
+    if (view === 'geoportal-public' && authState.isAuthenticated && authState.user?.rol !== 'cliente') {
+      setCurrentView('geoportal-detail');
       return;
     }
-    
-    // Prevent unauthenticated users from accessing detailed geoportal
+
+    // Usuario no autenticado no puede ir al geoportal detallado
     if (view === 'geoportal-detail' && !authState.isAuthenticated) {
-      setCurrentView('geoportal-public'); // Redirect to public geoportal
+      setCurrentView('geoportal-public');
       return;
     }
-    
+
     setCurrentView(view);
   };
 
   const renderCurrentView = () => {
     switch (currentView) {
       case 'landing':
-        // Show different landing experience based on authentication
-        return authState.isAuthenticated 
+        return authState.isAuthenticated
           ? <WelcomeDashboard authState={authState} onViewChange={handleViewChange} />
           : <LandingPage onViewChange={handleViewChange} />;
       case 'geoportal-public':
@@ -100,7 +135,7 @@ export default function App() {
       case 'citizen-dashboard':
         return <CitizenDashboard />;
       default:
-        return authState.isAuthenticated 
+        return authState.isAuthenticated
           ? <WelcomeDashboard authState={authState} onViewChange={handleViewChange} />
           : <LandingPage onViewChange={handleViewChange} />;
     }
@@ -115,17 +150,17 @@ export default function App() {
         onLoginClick={() => setIsLoginModalOpen(true)}
         onLogout={handleLogout}
       />
-      
+
       <main className="flex-1">
         {renderCurrentView()}
       </main>
-      
+
       <LoginModal
         isOpen={isLoginModalOpen}
         onClose={() => setIsLoginModalOpen(false)}
         onLogin={handleLogin}
       />
-      
+
       <Toaster />
     </div>
   );

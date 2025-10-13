@@ -46,7 +46,7 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
       case 'admin': return 'Administrador';
       case 'analista': return 'Analista';
       case 'operador': return 'Operador';
-      case 'cliente': return 'cliente'; // This must match the role in AuthState
+      case 'cliente': return 'cliente'; 
       default: return 'Usuario';
     }
   };
@@ -222,7 +222,8 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
                         Acceder
                       </Button>
                     )}
-                </Card>
+                </CardContent>
+                  </Card>
             ))}
           </div>
         </div>
@@ -231,10 +232,10 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
         <div className="mt-12 p-6 bg-blue-50 rounded-xl border border-blue-200">
           <div className="text-center space-y-4">
             <h3 className="text-xl font-semibold text-gray-900">
-              {user?.rol === 'ciudadano' ? 'Planifica tu Viaje' : 'Acceso Rápido al Monitoreo'}
+              {user?.rol === 'cliente' ? 'Planifica tu Viaje' : 'Acceso Rápido al Monitoreo'}
             </h3>
             <p className="text-gray-600">
-              {user?.rol === 'ciudadano' 
+              {user?.rol === 'cliente' 
                 ? 'Ve directamente al geoportal para ver la ubicación de las cabinas en tiempo real'
                 : 'Ve directamente al geoportal detallado para monitorear el sistema en tiempo real'
               }

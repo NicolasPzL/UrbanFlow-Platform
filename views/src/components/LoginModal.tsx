@@ -41,7 +41,56 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
       if (!me.ok) throw new Error('No fue posible obtener la sesión');
       const meJson = await me.json();
 
-      onLogin(meJson.data as User);
+      // Normalizar usuario del backend a tipo User del frontend
+      const rawInput = meJson.data;
+      const raw = rawInput?.user ?? rawInput;
+      try { console.debug?.('[auth/me after login]', raw); } catch {}
+
+      const rawrols = Array.isArray(raw?.rols)
+        ? raw.rols
+        : (raw?.rol || raw?.rol ? [raw?.rol ?? raw?.rol] : []);
+      const rolStrings: string[] = rawrols.map((r: any) => {
+        if (typeof r === 'string') return r.toLowerCase();
+        if (typeof r === 'object' && r) {
+          const name = (r.nombre || r.name || r.codigo || r.code || r.slug || '').toString();
+          return name.toLowerCase();
+        }
+        return '';
+      });
+              const pickrol = (): User['rol'] => {
+          const roles = Array.isArray(raw?.rols)
+            ? raw.rols
+            : raw?.rol
+              ? [raw.rol]
+              : [];
+
+          // normaliza a string minúscula sin acentos
+          const clean = (v: any) =>
+            String(v || '')
+              .normalize('NFD')
+              .replace(/[\u0300-\u036f]/g, '')
+              .toLowerCase();
+
+          const normalized = roles.map(clean).join(' ');
+
+          if (normalized.includes('admin')) return 'admin';
+          if (normalized.includes('analista')) return 'analista';
+          if (normalized.includes('operador')) return 'operador';
+          if (normalized.includes('cliente')) return 'cliente';
+
+          return 'operador'; // fallback
+        };
+
+      const normalized: User = {
+        id: String(raw?.usuario_id ?? raw?.id ?? ''),
+        name: raw?.nombre ?? raw?.name ?? '',
+        email: raw?.correo ?? raw?.email ?? '',
+        rol: pickrol(),
+        status: raw?.is_active === false ? 'inactive' : 'active',
+        lastLogin: raw?.last_login ?? raw?.lastLogin ?? undefined,
+      };
+
+      onLogin(normalized);
       onClose();
       setEmail("");
       setPassword("");

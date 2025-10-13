@@ -26,8 +26,8 @@ export const login = asyncHandler(async (req, res) => {
 
   await Users.recordSuccessfulLogin(u.usuario_id);
 
-  // Firmar token con las claves esperadas por los middlewares: { id, email, role }
-  const token = signToken({ id: u.usuario_id, email: u.correo, role: u.rol });
+  // Firmar token con las claves esperadas por los middlewares: { id, email, rol }
+  const token = signToken({ id: u.usuario_id, email: u.correo, rol: u.rol });
   setAuthCookie(res, token);
   await Audit.log({ usuario_id: u.usuario_id, accion: 'LOGIN', detalles: { correo } });
 
