@@ -10,7 +10,7 @@ pnpm-debug.log*
 .eslintcache
 .stylelintcache
 .vite/
-
+node_modules
 # Frontend build output
 views/original/build/
 build/
@@ -40,3 +40,5 @@ venv/
 coverage/
 *.log
 *.tmp
+
+node_modules

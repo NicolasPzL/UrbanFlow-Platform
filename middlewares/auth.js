@@ -75,12 +75,27 @@ async function requireAuth(req, res, next) {
 /** Autoriza por roles: requireRole('admin'), requireRole('admin','operator') */
 function requireRole(...roles) {
   return (req, res, next) => {
-    if (!req.user) return res.status(401).json({ error: 'No autenticado' });
-    const ok = roles.length === 0 || roles.includes(req.user.role);
-    if (!ok) return res.status(403).json({ error: 'No autorizado' });
+    if (!req.user) {
+      return res.status(401).json({ error: 'No autenticado' });
+    }
+
+    console.log('Usuario autenticado:', req.user);
+
+    const userRole = req.user.rol || req.user.role; // compatibilidad
+    const ok = roles.length === 0 || roles.includes(userRole);
+
+    if (!ok) {
+      return res.status(403).json({
+        error: 'No autorizado',
+        userRole,
+        required: roles,
+      });
+    }
+
     next();
   };
 }
+
 
 /** Helpers para login/logout */
 function setAuthCookies(res, payload) {

@@ -3,7 +3,7 @@ info:
   title: UrbanFlow Platform API
   version: 1.0.0
   description: |
-    API de UrbanFlow Platform. Incluye autenticación, gestión de usuarios y roles,
+    API de UrbanFlow Platform. Incluye autenticación, gestión de usuarios y rols,
     endpoints públicos y de dashboard.
     
     Notas:
@@ -17,7 +17,7 @@ tags:
   - name: Health
   - name: Auth
   - name: Users
-  - name: Roles
+  - name: rols
   - name: Dashboard
   - name: Public
 
@@ -274,10 +274,10 @@ paths:
         '403': { description: No autorizado o última cuenta admin }
         '404': { description: No encontrado }
 
-  /api/roles:
+  /api/rols:
     get:
-      tags: [Roles]
-      summary: Listar roles (admin)
+      tags: [rols]
+      summary: Listar rols (admin)
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -305,16 +305,16 @@ paths:
           schema: { type: string, enum: [asc, desc], default: asc }
       responses:
         '200':
-          description: Lista de roles
+          description: Lista de rols
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoleListResponse'
+                $ref: '#/components/schemas/rolListResponse'
         '401': { description: No autenticado }
         '403': { description: No autorizado }
 
     post:
-      tags: [Roles]
+      tags: [rols]
       summary: Crear rol (admin)
       security:
         - cookieAuth: []
@@ -324,21 +324,21 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateRoleRequest'
+              $ref: '#/components/schemas/CreaterolRequest'
       responses:
         '201':
           description: Rol creado
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RoleResponse'
+                $ref: '#/components/schemas/rolResponse'
         '401': { description: No autenticado }
         '403': { description: No autorizado }
         '409': { description: Nombre de rol duplicado }
 
-  /api/roles/{id}:
+  /api/rols/{id}:
     put:
-      tags: [Roles]
+      tags: [rols]
       summary: Actualizar rol (admin)
       security:
         - cookieAuth: []
@@ -353,16 +353,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateRoleRequest'
+              $ref: '#/components/schemas/UpdaterolRequest'
       responses:
-        '200': { description: Rol actualizado, content: { application/json: { schema: { $ref: '#/components/schemas/RoleResponse' } } } }
+        '200': { description: Rol actualizado, content: { application/json: { schema: { $ref: '#/components/schemas/rolResponse' } } } }
         '401': { description: No autenticado }
         '403': { description: No autorizado }
         '404': { description: No encontrado }
         '409': { description: Nombre de rol duplicado }
 
     delete:
-      tags: [Roles]
+      tags: [rols]
       summary: Eliminar rol (soft delete, admin)
       security:
         - cookieAuth: []
@@ -373,7 +373,7 @@ paths:
           required: true
           schema: { type: integer }
       responses:
-        '200': { description: Rol eliminado (soft), content: { application/json: { schema: { $ref: '#/components/schemas/RoleResponse' } } } }
+        '200': { description: Rol eliminado (soft), content: { application/json: { schema: { $ref: '#/components/schemas/rolResponse' } } } }
         '401': { description: No autenticado }
         '403': { description: Prohibido (rol protegido) }
         '404': { description: No encontrado }
@@ -476,7 +476,7 @@ components:
               properties:
                 id: { type: integer, example: 1 }
                 email: { type: string, format: email }
-                role: { type: string, example: admin }
+                rol: { type: string, example: admin }
 
     UserPublic:
       type: object
@@ -525,7 +525,7 @@ components:
         correo: { type: string, format: email }
         password: { type: string, description: 'Opcional si se envía passwordHash' }
         passwordHash: { type: string, description: 'Opcional si se envía password' }
-        rol: { type: string, description: 'Debe existir en tabla roles y estar activo' }
+        rol: { type: string, description: 'Debe existir en tabla rols y estar activo' }
         mustChangePassword: { type: boolean, default: false }
 
     UpdateUserRequest:
@@ -533,13 +533,13 @@ components:
       properties:
         nombre: { type: string }
         correo: { type: string, format: email }
-        rol: { type: string, description: 'Debe existir en tabla roles y estar activo' }
+        rol: { type: string, description: 'Debe existir en tabla rols y estar activo' }
         is_active: { type: boolean }
         must_change_password: { type: boolean }
         password: { type: string, description: 'Para cambiar contraseña, el server la hasheará' }
         passwordHash: { type: string, description: 'Alternativa al campo password' }
 
-    Role:
+    rol:
       type: object
       properties:
         rol_id: { type: integer }
@@ -550,21 +550,21 @@ components:
         actualizado_en: { type: string, format: date-time }
         deleted_at: { type: string, format: date-time, nullable: true }
 
-    RoleResponse:
+    rolResponse:
       type: object
       properties:
         ok: { type: boolean, example: true }
         data:
-          $ref: '#/components/schemas/Role'
+          $ref: '#/components/schemas/rol'
 
-    RoleListResponse:
+    rolListResponse:
       type: object
       properties:
         ok: { type: boolean, example: true }
         data:
           type: array
           items:
-            $ref: '#/components/schemas/Role'
+            $ref: '#/components/schemas/rol'
         meta:
           type: object
           properties:
@@ -572,7 +572,7 @@ components:
             limit: { type: integer }
             offset: { type: integer }
 
-    CreateRoleRequest:
+    CreaterolRequest:
       type: object
       required: [nombre_rol]
       properties:
@@ -580,7 +580,7 @@ components:
         descripcion: { type: string, nullable: true }
         is_active: { type: boolean, default: true }
 
-    UpdateRoleRequest:
+    UpdaterolRequest:
       type: object
       properties:
         nombre_rol: { type: string }

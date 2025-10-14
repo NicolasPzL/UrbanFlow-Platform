@@ -1,129 +1,98 @@
-# UrbanFlow-Platform
-Plataforma digital integral para la gestión, monitoreo y análisis del sistema de metro cable de UrbanFlow Analytics S.A.S.
-# Plataforma de Movilidad Inteligente - UrbanFlow 
+# UrbanFlow Platform
 
-Este es el monorepo oficial para el desarrollo de la plataforma digital integral de **Urban Flow Analytics S.A.S.**. El objetivo es gestionar, monitorear y analizar eficientemente nuestro sistema de metro cable urbano por cabinas.
+**Plataforma integral de gestión y monitoreo para sistemas de transporte por cable**
 
-Buscamos optimizar la experiencia de viaje, aumentar la eficiencia del servicio y fortalecer la seguridad de los pasajeros mediante el uso estratégico de datos y plataformas tecnológicas innovadoras.
+#### Movilidad Inteligente | Eficiencia | Seguridad
+## Visión General
 
----
-
-##  Estructura del Repositorio
-
-* `/analytics`: Contiene el microservicio en **Python/Flask** para el análisis de vibraciones y la detección predictiva de fallos en las cabinas.
-* `/backend`: API principal, gestión de usuarios, rutas, estaciones y lógica de negocio, desarrollada en **Node.js** bajo un patrón MVC.
-* `/frontend`: Portal web interactivo para administradores, operadores y ciudadanos, desarrollado también con **Node.js** para la gestión de vistas.
+UrbanFlow es una solución tecnológica completa diseñada para la gestión, monitoreo y análisis de sistemas de transporte por cable. La plataforma centraliza toda la operación, proporcionando herramientas avanzadas para optimizar la eficiencia, seguridad y experiencia del usuario.
 
 ---
 
-##  Funcionalidades Clave
+## Objetivo Principal
 
-El desarrollo de esta plataforma se centra en los siguientes módulos principales:
+Transformar la movilidad urbana mediante una plataforma digital que integre:
 
-* **Gestión de Operaciones:** Módulo para administrar rutas, estaciones y cabinas del sistema de teleférico.
-* **Dashboard en Tiempo Real:** Visualización de indicadores de desempeño (KPIs) y la ubicación en tiempo real de las cabinas sobre un mapa, usando un código de colores para su estado operativo (🟢 Normal, 🟡 Inusual, 🔴 Fallo).
-* **Analítica Predictiva:** Detección temprana de fallos en cabinas mediante el entrenamiento de modelos de IA con datos de vibraciones recolectados por sensores IoT.
-* **Gestión de Usuarios:** Sistema de autenticación segura y gestión de roles para diferenciar el acceso de administradores, operadores y ciudadanos.
-
----
-
-##  Cómo Empezar (Runbook)
-
-> Este repo expone un backend Node/Express y sirve el frontend (Vite build) desde `views/original/build` en el mismo puerto (3000).
-
-### 1) Requisitos
-- Node.js 20+ (recomendado) / 18+ mínimo
-- PostgreSQL en local con la DB configurada en `.env`
-
-### 2) Variables de entorno (`.env` en la raíz)
-Ejemplo mínimo:
-```
-PORT=3000
-NODE_ENV=development
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_NAME=urbanflow_db
-DB_USER=postgres
-DB_PASSWORD=tu_password
-JWT_SECRET=super_secreto
-```
-
-### 3) Instalar dependencias backend (reproducible)
-En la raíz del proyecto (usa el lockfile):
-
-```
-npm ci o tambien npm i
-```
-
-### 4) Construir el frontend (Vite) dentro de `views/original/`
-El backend sirve automáticamente el build estático desde `/`.
-
-```
-# instalación reproducible (usa package-lock.json del frontend)
-npm --prefix "views/original" ci
-# build de producción
-npm --prefix "views/original" run build
-```
-
-### 5) Levantar el backend
-
-```
-npm run dev
-# Abre http://localhost:3000
-```
-
-### 6) Rutas principales
-- Health: `GET /health`
-- Público: `GET /api/map/public` (estructura: `{ stations: [], cabins: [], stats: { activeCabins, totalPassengers, avgETA } }`)
-- Auth: `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout`
-- Usuarios (admin): `GET/POST /api/users`, `GET/PUT/DELETE /api/users/:id`
-- Roles (admin): `GET/POST /api/roles`, `PUT/DELETE /api/roles/:id`
-- Dashboard (admin): `GET /api/dashboard` (puede estar como stub)
-
-### 7) Notas de integración Frontend
-- El backend sirve la landing y SPA build desde `/`.
-- Si desarrollas el frontend con Vite por separado, usa puerto 5173 y proxy `/api` → `http://localhost:3000`.
-- Cookies HTTPOnly: cuando hagas fetch a `/api/*`, usa `credentials: 'include'`.
-
-> Importante: la carpeta correcta es `views/original/` (sin typos). Si ves errores como `views\origal`, corrige el nombre de carpeta o vuelve a clonar.
-
-### 8) Errores comunes y soluciones
-- 400 `entity.parse.failed` en GET (body-parser):
-  - No envíes `Content-Type: application/json` en GET/DELETE y deja el body vacío.
-- `path-to-regexp` error en fallback SPA (Express 5):
-  - Ya está resuelto usando regex `app.get(/^(?!\/api\/).*/, ...)`.
-- JSX/TS en `views/original/`:
-  - Ya están definidos en `devDependencies` del `views/original/package.json`. No instales manualmente.
-  - Si el IDE marca errores, ejecuta:
-    - `npm --prefix "views/original" ci`
-    - `npm --prefix "views/original" run build`
-
-### 9) Multi-rol de usuarios (API)
-- Crear usuario aceptando uno o varios roles:
-```
-POST /api/users
-{
-  "nombre": "Ana Ruiz",
-  "correo": "ana@example.com",
-  "password": "Usuario123!",
-  "rol": ["admin", "operador"]
-}
-```
-- Alternativa: `roles: ["admin", "operador"]`.
-- El primer rol se usa como rol primario en `usuarios.rol`; todos se reflejan en `rol_usuario`.
-
-### 10) Seguridad
-- Rutas `/api/users` y `/api/roles` requieren `requireAuth` + rol `admin`.
-- Para pruebas, loguéate y usa la cookie `access_token` (HTTPOnly). En fetch/axios, setea `credentials: 'include'`.
-
-### 11) Despliegue
-- Ejecuta el build del frontend y sirve desde Express tal como está en `app.js`.
-- Ajusta `helmet`/CSP si algún asset del build se bloquea.
+- **Gestión operativa** en tiempo real
+- **Monitoreo continuo** del estado de las cabinas
+- **Análisis predictivo** mediante inteligencia artificial
+- **Visualización geográfica** de toda la operación
 
 ---
 
-##  Contactos del Proyecto
+## Características Principales
 
-* **Líder de Analítica:** @tu-usuario-de-github
-* **Líder de Backend:** @usuario-lider-backend
-* **Líder de Frontend:** @usuario-lider-frontend
+### Dashboard Centralizado
+- Monitoreo en tiempo real del estado operativo
+- Métricas de rendimiento y eficiencia
+- Alertas tempranas y notificaciones
+- Históricos y tendencias
+
+### Geoportal Interactivo
+- Mapa en tiempo real con posición de cabinas
+- Código de colores para estados operativos
+- Visualización de rutas y estaciones
+- Acceso público informativo
+
+### Gestión de Usuarios
+- Roles diferenciados (Administradores, Operadores)
+- Autenticación segura
+- Control de acceso y permisos
+
+### Analítica Avanzada
+- Procesamiento de datos de sensores IoT
+- Modelos predictivos de mantenimiento
+- Reportes personalizables
+- Indicadores de desempeño
+
+---
+## Estructura del Repositorio
+
+```
+urbanflow-platform/
+├── config/           # Archivos de configuración general
+├── controllers/      # Lógica de negocio (intermediario entre models y views)
+├── data/            # Datos estáticos o archivos temporales
+├── db/              # Scripts y configuraciones para conexión a BD
+├── docs/            # Documentación técnica y manuales
+├── errors/          # Manejo personalizado de errores
+├── microservices/   # Microservicios adicionales (Flask para IA)
+├── middlewares/     # Funciones intermedias (autenticación, autorización)
+├── models/          # Definición de estructuras de datos y esquemas de BD
+├── public/          # Archivos estáticos accesibles (CSS, JS, imágenes)
+├── routes/          # Definición de rutas de la API y aplicativo web
+├── sql/             # Scripts SQL de creación y carga de BD
+├── utils/           # Funciones auxiliares reutilizables
+├── views/           # Vistas/renderizado de interfaz (plantillas)
+├── .gitignore       # Archivos/carpetas a ignorar en Git
+├── app.js           # Archivo principal de la aplicación Node.js
+├── LICENSE.md       # Licencia del proyecto
+├── package.json     # Dependencias y scripts del proyecto
+├── README.md        # Este archivo
+└── requirements.txt # Dependencias para microservicios Python
+```
+---
+
+## Módulos de la Plataforma
+
+| Módulo | Función |
+|--------|---------|
+| **Operaciones** | Monitoreo en tiempo real y gestión de flota |
+| **Seguridad** | Control de acceso y protocolos de emergencia |
+| **Mantenimiento** | Alertas predictivas y gestión de incidencias |
+| **Analítica** | Business Intelligence y reporting |
+| **Usuario** | Información pública y autogestión |
+
+---
+
+## Beneficios Clave
+
+-  **Eficiencia operativa** mejorada
+-  **Seguridad** reforzada para pasajeros
+-  **Experiencia de usuario** optimizada
+-  **Toma de decisiones** basada en datos
+-  **Mantenimiento predictivo** preventivo
+
+---
+
+**UrbanFlow** - Conectando ciudades de forma inteligente y segura
