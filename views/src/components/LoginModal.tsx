@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { User } from "../types";
+import { normalizeRolToEs } from "../lib/roles";
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -16,6 +17,21 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [failCount, setFailCount] = useState(0);
+  const [lockUntil, setLockUntil] = useState<number | null>(null);
+
+  const isLocked = lockUntil !== null && Date.now() < lockUntil;
+  const lockRemainingSec = isLocked ? Math.ceil((lockUntil! - Date.now()) / 1000) : 0;
+
+  const validateInputs = () => {
+    const trimmedEmail = email.trim();
+    const trimmedPass = password.trim();
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
+    const passOk = trimmedPass.length >= 8; // mínimo 8
+    if (!emailOk) throw new Error('Correo inválido');
+    if (!passOk) throw new Error('La contraseña debe tener al menos 8 caracteres');
+    return { correo: trimmedEmail, password: trimmedPass };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,18 +39,20 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
     setIsLoading(true);
 
     try {
+      if (isLocked) {
+        throw new Error(`Demasiados intentos fallidos. Reintenta en ${lockRemainingSec}s`);
+      }
+
+      const payload = validateInputs();
       // Real login against backend API
       const resp = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include', // send/receive HTTPOnly cookie
-        body: JSON.stringify({ correo: email, password }),
+        body: JSON.stringify(payload),
       });
 
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err?.error?.message || 'Error de autenticación');
-      }
+      if (!resp.ok) throw new Error('Credenciales inválidas');
 
       // Fetch current user info
       const me = await fetch('/api/auth/me', { credentials: 'include' });
@@ -46,46 +64,11 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
       const raw = rawInput?.user ?? rawInput;
       try { console.debug?.('[auth/me after login]', raw); } catch {}
 
-      const rawrols = Array.isArray(raw?.rols)
-        ? raw.rols
-        : (raw?.rol || raw?.rol ? [raw?.rol ?? raw?.rol] : []);
-      const rolStrings: string[] = rawrols.map((r: any) => {
-        if (typeof r === 'string') return r.toLowerCase();
-        if (typeof r === 'object' && r) {
-          const name = (r.nombre || r.name || r.codigo || r.code || r.slug || '').toString();
-          return name.toLowerCase();
-        }
-        return '';
-      });
-              const pickrol = (): User['rol'] => {
-          const roles = Array.isArray(raw?.rols)
-            ? raw.rols
-            : raw?.rol
-              ? [raw.rol]
-              : [];
-
-          // normaliza a string minúscula sin acentos
-          const clean = (v: any) =>
-            String(v || '')
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .toLowerCase();
-
-          const normalized = roles.map(clean).join(' ');
-
-          if (normalized.includes('admin')) return 'admin';
-          if (normalized.includes('analista')) return 'analista';
-          if (normalized.includes('operador')) return 'operador';
-          if (normalized.includes('cliente')) return 'cliente';
-
-          return 'operador'; // fallback
-        };
-
       const normalized: User = {
         id: String(raw?.usuario_id ?? raw?.id ?? ''),
         name: raw?.nombre ?? raw?.name ?? '',
         email: raw?.correo ?? raw?.email ?? '',
-        rol: pickrol(),
+        rol: normalizeRolToEs(raw),
         status: raw?.is_active === false ? 'inactive' : 'active',
         lastLogin: raw?.last_login ?? raw?.lastLogin ?? undefined,
       };
@@ -94,8 +77,17 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
       onClose();
       setEmail("");
       setPassword("");
+      setFailCount(0);
+      setLockUntil(null);
     } catch (ex: any) {
-      setError(ex?.message || 'Error iniciando sesión');
+      // Siempre mensaje genérico para no filtrar información sensible
+      const msg = ex?.message || 'Credenciales inválidas';
+      setError(msg);
+      const nextFails = failCount + 1;
+      setFailCount(nextFails);
+      if (nextFails >= 5) {
+        setLockUntil(Date.now() + 30_000); // 30s lockout
+      }
     } finally {
       setIsLoading(false);
     }
@@ -141,8 +133,8 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
               {error}
             </div>
           )}
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
+          <Button type="submit" className="w-full" disabled={isLoading || isLocked}>
+            {isLocked ? `Bloqueado ${lockRemainingSec}s` : (isLoading ? "Iniciando sesión..." : "Iniciar Sesión")}
           </Button>
         </form>
       </DialogContent>

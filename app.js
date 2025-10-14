@@ -7,6 +7,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
+import xss from 'xss';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -72,11 +74,50 @@ if (NODE_ENV === 'development') {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+// Sanitización básica contra XSS en body, query y params (compatible con Express 5)
+function sanitizeInPlace(obj) {
+  if (!obj || typeof obj !== 'object') return;
+  for (const key of Object.keys(obj)) {
+    const val = obj[key];
+    if (typeof val === 'string') {
+      obj[key] = xss(val);
+    } else if (Array.isArray(val)) {
+      obj[key] = val.map((item) => (typeof item === 'string' ? xss(item) : (typeof item === 'object' && item !== null ? (sanitizeInPlace(item), item) : item)));
+    } else if (val && typeof val === 'object') {
+      sanitizeInPlace(val);
+    }
+  }
+}
+app.use((req, _res, next) => {
+  try {
+    if (req.body) sanitizeInPlace(req.body);
+    if (req.query) sanitizeInPlace(req.query); // muta propiedades sin reasignar el objeto
+    if (req.params) sanitizeInPlace(req.params);
+  } catch {}
+  next();
+});
 
-// Sanitización y rate limiting deshabilitados (middlewares no implementados aún)
+// Rate limiting
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 50,                  // 50 intentos por ventana
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests, try later.' },
+});
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 600,            // 600 req/min por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+// Aplicar límites (antes de montar rutas)
+app.use('/api/auth/login', loginLimiter);
+app.use('/api/', apiLimiter);
+
+// Sanitización (pendiente de implementar sanitizers específicos)
 // app.use(sanitizeQuery);
 // app.use(sanitizeBody);
-// app.use(apiLimiter);
 
 // =============================================================================
 // RUTAS PÚBLICAS
@@ -115,11 +156,11 @@ app.use('/api/roles', requireAuth, requireRole('admin'), roleRoutes);
 // Mapa público (sin autenticación)
 app.use('/api/map', publicRoutes);
 
-// Dashboard ciudadano (público, sin autenticación)
-app.use('/api/citizen', citizenRoutes);
+// Dashboard ciudadano (requiere autenticación de cliente)
+app.use('/api/citizen', requireAuth, requireRole('cliente'), citizenRoutes);
 
-// Dashboard (requiere autenticación)
-app.use('/api/dashboard', requireAuth, dashboardRoutes);
+// Dashboard principal para staff (excluye cliente)
+app.use('/api/dashboard', requireAuth, requireRole('admin','operador','analista'), dashboardRoutes);
 
 // =============================================================================
 // SERVIR FRONTEND (BUILD VITE) Y FALLBACK SPA

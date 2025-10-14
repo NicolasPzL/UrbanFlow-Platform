@@ -96,3 +96,115 @@ urbanflow-platform/
 ---
 
 **UrbanFlow** - Conectando ciudades de forma inteligente y segura
+
+---
+
+## Guía Rápida de Inicio (Runbook)
+
+### 1) Prerrequisitos
+- **Node.js** 20 LTS recomendado (funciona con 18/20; evite Node 24 en Windows por issues con Rollup).
+- **npm** 8+.
+- **PostgreSQL** 13+ corriendo local: `127.0.0.1:5432`.
+
+### 2) Configurar variables de entorno
+Crear `.env` en la raíz del proyecto. Ejemplo mínimo:
+
+```
+NODE_ENV=development
+PORT=3000
+
+# Base de datos (backend Node y microservicios)
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_NAME=urbanflow_db
+DB_USER=postgres
+DB_PASSWORD=postgres
+
+# JWT / Cookies
+JWT_SECRET=change_me
+REFRESH_JWT_SECRET=change_me_refresh
+AUTH_COOKIE_NAME=access_token
+REFRESH_COOKIE_NAME=refresh_token
+
+# CORS (para usar Vite Dev Server)
+FRONTEND_URL=http://localhost:5173
+```
+
+Inicialice la BD con los scripts en `docs/db_actualizada_2do_sprint.sql` si es necesario.
+
+### 3) Instalar dependencias
+En la raíz (backend Node):
+
+```
+npm install
+```
+
+Frontend (Vite en `views/`):
+
+```
+npm --prefix "views" install
+```
+
+### 4) Arranque en desarrollo (recomendado)
+- Terminal A (backend):
+```
+npm run dev
+```
+Backend disponible en `http://localhost:3000`.
+
+- Terminal B (frontend con hot reload):
+```
+npm --prefix "views" run dev
+```
+Frontend Vite en `http://localhost:5173`.
+
+Notas:
+- Si accedes al front por `5173`, las APIs `/api/*` las atiende el backend en `3000` (CORS activado vía `FRONTEND_URL`).
+- Si prefieres servir el front desde Express, usa el paso 5.
+
+### 5) Servir frontend empaquetado desde Express (modo "producción local")
+Construir el frontend y arrancar backend:
+
+```
+npm --prefix "views" run build
+npm run dev
+```
+
+Express servirá los estáticos desde `views/build/` en `http://localhost:3000`.
+
+### 6) Credenciales de prueba
+Después de cargar datos, inicia sesión desde el botón “Iniciar Sesión”. La API espera body `{ correo, password }`.
+
+### 7) Microservicio de Analítica (opcional)
+Ubicación: `microservices/analytics/` (FastAPI).
+
+```
+cd microservices/analytics
+python -m venv .venv && . .venv/Scripts/activate   # Windows
+pip install -r requirements.txt
+set ANALYTICS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/urbanflow_db
+uvicorn app.main:app --reload --port 8080
+```
+
+Docker (alternativo):
+
+```
+cd microservices/analytics
+docker build -t urbanflow-analytics:dev .
+docker run --rm -e ANALYTICS_DATABASE_URL="postgresql+psycopg2://postgres:postgres@host.docker.internal:5432/urbanflow_db" -p 8080:8080 urbanflow-analytics:dev
+```
+
+### 8) Roles y acceso
+- El backend protege rutas como `/api/users` con `requireAuth` + `requireRole('admin')`.
+- El frontend aplica guardas por rol; tras login se hidrata la sesión con `/api/auth/me`.
+
+### 9) Problemas comunes y soluciones
+- **404 index.html** al abrir `http://localhost:3000`:
+  - Ejecuta `npm --prefix "views" run build` para generar `views/build/`.
+- **CORS o sesión no persiste en 5173**:
+  - Asegura `FRONTEND_URL=http://localhost:5173` en `.env` y que `fetch` use `credentials: 'include'` (ya está en el código).
+- **Rollup en Windows (Node 24)**:
+  - Preferir Node 20 LTS, o reinstalar dependencias en `views/` y reconstruir.
+- **Roles inválidos al crear/editar**:
+  - La BD debe contener los nombres de roles esperados. El front normaliza valores y el back valida existencia.
+
