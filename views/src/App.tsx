@@ -9,6 +9,7 @@ import { DetailedGeoportal } from "./components/DetailedGeoportal";
 import { UserManagement } from "./components/UserManagement";
 import { CitizenDashboard } from "./components/CitizenDashboard";
 import { AuthState, AppView, User } from "./types";
+import { normalizeRolToEs } from "./lib/roles";
 import { Toaster } from "./components/ui/sonner";
 
 export default function App() {
@@ -22,19 +23,7 @@ export default function App() {
   // Normaliza la forma del usuario que viene del backend a nuestro tipo User
   const normalizeUser = (rawInput: any): User => {
     const raw = rawInput?.user ?? rawInput; // soporta { data: { user: {...} }}
-
-    // Normalizar el rol (ya no roles múltiples)
-    const rawRol = raw?.rol ?? raw?.role ?? '';
-    const normalizeName = (v: string) =>
-      v?.normalize?.('NFD').replace(/[\u0300-\u036f]/g, '')?.toLowerCase() || '';
-
-    const r = normalizeName(rawRol);
-    let finalRol: User["rol"] = 'cliente';
-
-    if (['admin', 'administrador'].includes(r)) finalRol = 'admin';
-    else if (['analyst', 'analista'].includes(r)) finalRol = 'analista';
-    else if (['operator', 'operador', 'operario'].includes(r)) finalRol = 'operador';
-    else if (['client', 'cliente'].includes(r)) finalRol = 'cliente';
+    const finalRol = normalizeRolToEs(raw);
 
     return {
       id: String(raw?.usuario_id ?? raw?.id ?? ''),

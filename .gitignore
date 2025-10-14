@@ -11,6 +11,7 @@ pnpm-debug.log*
 .stylelintcache
 .vite/
 node_modules
+
 # Frontend build output
 views/original/build/
 build/
@@ -20,12 +21,43 @@ dist/
 .env
 .env.*.local
 .env.local
+*.env
+.envrc
+.envrc.local
+.secrets*
+secrets/
+
+# Certificates / keys
+*.pem
+*.crt
+*.key
+*.pfx
+*.p12
+certs/
+
+# Database dumps / local DBs
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+dumps/
+
+# Docker overrides
+docker-compose.override.yml
+.env.docker
+
+# Jupyter/analytics artifacts
+*.ipynb
+.ipynb_checkpoints/
 
 ### Editors / OS
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+ehthumbs.db
+Desktop.ini
 
 ### Python (si usas analytics/ u otros scripts)
 __pycache__/

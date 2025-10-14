@@ -74,6 +74,8 @@ async function requireAuth(req, res, next) {
 
 /** Autoriza por roles: requireRole('admin'), requireRole('admin','operator') */
 function requireRole(...roles) {
+  // normaliza roles requeridos a minúsculas
+  const required = roles.map(r => String(r).toLowerCase());
   return (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({ error: 'No autenticado' });
@@ -81,14 +83,18 @@ function requireRole(...roles) {
 
     console.log('Usuario autenticado:', req.user);
 
-    const userRole = req.user.rol || req.user.role; // compatibilidad
-    const ok = roles.length === 0 || roles.includes(userRole);
+    // soporta multi-rol: req.user.roles (array) + rol primario
+    const primary = (req.user.rol || req.user.role || '').toString().toLowerCase();
+    const extra = Array.isArray(req.user.roles) ? req.user.roles.map(r => String(r).toLowerCase()) : [];
+    const userRoles = primary ? Array.from(new Set([primary, ...extra])) : extra;
+
+    const ok = required.length === 0 || userRoles.some(r => required.includes(r));
 
     if (!ok) {
       return res.status(403).json({
         error: 'No autorizado',
-        userRole,
-        required: roles,
+        userRoles,
+        required,
       });
     }
 
