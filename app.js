@@ -125,14 +125,13 @@ app.use('/api/dashboard', requireAuth, dashboardRoutes);
 // SERVIR FRONTEND (BUILD VITE) Y FALLBACK SPA
 // =============================================================================
 
-// Servir archivos estáticos del frontend compilado
-const clientBuildPath = path.join(__dirname, 'views', 'original', 'build');
+// Servir archivos estáticos del nuevo frontend compilado (Vite)
+const clientBuildPath = path.join(__dirname, 'views', 'build');
 app.use(express.static(clientBuildPath));
 
-// Fallback SPA: para cualquier ruta que no sea /api/*, devolver index.html
-// Express 5 no acepta '*', usamos una regex que excluye /api
+// Fallback SPA: para cualquier ruta que no sea /api/*
 app.get(/^(?!\/api\/).*/, (req, res) => {
-  return res.sendFile(path.join(clientBuildPath, 'index.html'));
+  res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
 
 // =============================================================================

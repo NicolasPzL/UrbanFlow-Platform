@@ -26,8 +26,8 @@ export const login = asyncHandler(async (req, res) => {
 
   await Users.recordSuccessfulLogin(u.usuario_id);
 
-  // Firmar token con las claves esperadas por los middlewares: { id, email, role }
-  const token = signToken({ id: u.usuario_id, email: u.correo, role: u.rol });
+  // Firmar token con las claves esperadas por los middlewares: { id, email, rol }
+  const token = signToken({ id: u.usuario_id, email: u.correo, rol: u.rol });
   setAuthCookie(res, token);
   await Audit.log({ usuario_id: u.usuario_id, accion: 'LOGIN', detalles: { correo } });
 
@@ -66,3 +66,67 @@ export const refresh = asyncHandler(async (req, res) => {
     throw new AppError('Refresh token inválido', { status: 401, code: 'INVALID_REFRESH' });
   }
 });
+
+/**
+ * authController.js
+ * 
+ * @description Controlador de autenticación para UrbanFlow con seguridad empresarial
+ * @version 1.0
+ * 
+ * @requires ../middlewares/asyncHandler.js
+ * @requires ../errors/AppError.js
+ * @requires ../utils/password.js
+ * @requires ../utils/jwtHelper.js
+ * @requires ../models/userModel.js
+ * @requires ../models/auditoriaModel.js
+ * 
+ * @overview Sistema completo de autenticación con JWT, cookies seguras, auditoría
+ *           y protección contra fuerza bruta. Cumple con RF5 y RF6 del documento.
+ * 
+ * @method login
+ * @description Autentica un usuario y genera token JWT con cookie segura
+ * @param {Object} req - Request con { correo, password }
+ * @param {Object} res - Response
+ * @returns {Object} { ok: true, data: { id, nombre, correo, rol } }
+ * @throws {AppError} 400 - Datos inválidos, 401 - Credenciales incorrectas, 423 - Cuenta bloqueada
+ * @security Registra intentos fallidos y bloquea cuentas temporalmente
+ * 
+ * @method me
+ * @description Obtiene información del usuario actualmente autenticado
+ * @param {Object} req - Request (debe tener user del middleware de auth)
+ * @param {Object} res - Response
+ * @returns {Object} { ok: true, data: { user } }
+ * 
+ * @method logout
+ * @description Cierra la sesión del usuario limpiando la cookie de autenticación
+ * @param {Object} req - Request con usuario autenticado
+ * @param {Object} res - Response
+ * @returns {Object} { ok: true, data: { message: 'Sesión cerrada' } }
+ * @security Registra el logout en auditoría
+ * 
+ * @example
+ * // Login exitoso:
+ * POST /api/auth/login
+ * Body: { "correo": "operador@urbanflow.com", "password": "miPassword123" }
+ * Response: { 
+ *   "ok": true, 
+ *   "data": { 
+ *     "id": "507f1f77bcf86cd799439011", 
+ *     "nombre": "Carlos Operador", 
+ *     "correo": "operador@urbanflow.com", 
+ *     "rol": "operador" 
+ *   }
+ * }
+ * 
+ * // Login fallido:
+ * Response: { 
+ *   "ok": false, 
+ *   "error": { 
+ *     "code": "BAD_CREDENTIALS", 
+ *     "message": "Credenciales inválidas" 
+ *   }
+ * }
+ * 
+ * @audit Se registran todos los intentos de login (exitosos y fallidos)
+ * @security Implementa bloqueo temporal tras múltiples intentos fallidos
+ */
