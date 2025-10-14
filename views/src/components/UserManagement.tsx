@@ -47,65 +47,85 @@ export function UserManagement() {
   });
 
   // Cargar usuarios desde backend (requiere admin)
-  useEffect(() => {
-    (async () => {
-      try {
-        const resp = await fetch('/api/users', { credentials: 'include' });
-        if (!resp.ok) throw new Error('No se pudo cargar usuarios');
-        const json = await resp.json();
-        const items = Array.isArray(json.data) ? json.data : [];
-        const mapped: UIUser[] = items.map((u: any) => ({
-          id: String(u.usuario_id ?? u.id ?? ''),
-          name: u.nombre ?? u.name ?? '',
-          email: u.correo ?? u.email ?? '',
-          // CORRECCIÓN 2 (Línea 97): Eliminada redundancia lógica (u.rol ?? u.rol)
-          rol: u.rol ?? 'operador',
-          // CORRECCIÓN 3 (Línea 98): Lógica de estado más segura.
-          // Si u.is_active no existe o es true, es 'active'. Solo con false es 'inactive'.
-          status: (u.is_active === false || u.status === 'inactive' ? 'inactive' : 'active'), 
-          lastLogin: u.last_login ?? u.lastLogin ?? undefined,
-        }));
-        setUsers(mapped);
-      } catch (e: any) {
-        setError(e?.message || 'Error al cargar');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    useEffect(() => {
+    (async () => {
+        try {
+        const resp = await fetch('/api/users', { credentials: 'include' });
+        if (!resp.ok) throw new Error('No se pudo cargar usuarios');
 
-  const filteredUsers = users.filter(user =>
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+        const json = await resp.json();
+        const items = Array.isArray(json.data) ? json.data : [];
 
-  const handleCreateUser = async () => {
-    try {
-      const resp = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ nombre: newUser.name, correo: newUser.email, rol: newUser.rol, password: 'Usuario123!' }),
-      });
-      if (!resp.ok) throw new Error('No se pudo crear el usuario');
-      const created = await resp.json();
-      const u = created.data;
-      const mapped: UIUser = {
-        id: String(u.usuario_id ?? u.id ?? ''),
-        name: u.nombre ?? '',
-        email: u.correo ?? '',
-        rol: u.rol ?? 'operador',
-        status: (u.is_active === false ? 'inactive' : 'active'),
-        lastLogin: u.last_login ?? undefined,
-      };
-      setUsers([...users, mapped]);
-      // Usa el tipo de NewUserForm en el reset
-      setNewUser({ name: "", email: "", rol: "operador", status: "active" });
-      setIsCreateModalOpen(false);
-    } catch (e) {
-      alert('Error creando usuario');
-    }
-  };
+        const mapped: UIUser[] = items.map((u: any) => ({
+            id: String(u.usuario_id ?? u.id ?? ''),
+            name: u.nombre ?? u.name ?? '',
+            email: u.correo ?? u.email ?? '',
+            rol: u.rol ?? u.role ?? 'operador',
+            status:
+            u.is_active === false ||
+            u.isActive === false ||
+            u.status === 'inactive'
+                ? 'inactive'
+                : 'active',
+            lastLogin: u.last_login ?? u.lastLogin ?? undefined,
+        }));
+
+        setUsers(mapped);
+        } catch (e: any) {
+        console.error('Error cargando usuarios:', e);
+        setError(e?.message || 'Error al cargar');
+        } finally {
+        setLoading(false);
+        }
+    })();
+    }, []);
+
+    const handleCreateUser = async () => {
+    try {
+        const resp = await fetch('/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+            nombre: newUser.name,
+            correo: newUser.email,
+            rol: newUser.rol,
+            password: 'Usuario123!',
+        }),
+        });
+
+        if (!resp.ok) throw new Error('No se pudo crear el usuario');
+
+        const created = await resp.json();
+        const u = created.data;
+
+        const mapped: UIUser = {
+        id: String(u.usuario_id ?? u.id ?? ''),
+        name: u.nombre ?? u.name ?? '',
+        email: u.correo ?? u.email ?? '',
+        rol: u.rol ?? u.role ?? 'operador',
+        status:
+            u.is_active === false ||
+            u.isActive === false ||
+            u.status === 'inactive'
+            ? 'inactive'
+            : 'active',
+        lastLogin: u.last_login ?? u.lastLogin ?? undefined,
+        };
+
+        setUsers([...users, mapped]);
+        setNewUser({ name: '', email: '', rol: 'operador', status: 'active' });
+        setIsCreateModalOpen(false);
+    } catch (e) {
+        console.error('Error creando usuario:', e);
+        alert('Error creando usuario');
+    }
+    };
+    // Filtro por nombre o correo
+    const filteredUsers = users.filter((user) =>
+    (user.name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.email ?? "").toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
   // **CORRECCIÓN 4 y 5: handleEditUser para asignar tipos flexibles**
   // Se ha corregido el error de tipado de rol y status quitando el 'as any' 
