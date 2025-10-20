@@ -1,205 +1,149 @@
 // controllers/dashboardController.js
 import { asyncHandler } from '../middlewares/asyncHandler.js';
 
-// Datos mock para el dashboard
-const mockCabins = [
-  {
-    id: 'CB001',
-    position: { x: 25, y: 75 },
-    velocity: 4.2,
-    passengers: 12,
-    eta: '14:32',
-    vibrationLast: 0.8,
-    vibrationAvg: 0.7,
-    status: 'normal',
-    statusProcessed: 'En funcionamiento normal',
-    isMoving: true
-  },
-  {
-    id: 'CB002',
-    position: { x: 42, y: 58 },
-    velocity: 3.8,
-    passengers: 8,
-    eta: '14:35',
-    vibrationLast: 1.2,
-    vibrationAvg: 1.1,
-    status: 'warning',
-    statusProcessed: 'Vibración ligeramente elevada',
-    isMoving: true
-  },
-  {
-    id: 'CB003',
-    position: { x: 58, y: 42 },
-    velocity: 0,
-    passengers: 15,
-    eta: '14:40',
-    vibrationLast: 2.1,
-    vibrationAvg: 1.8,
-    status: 'alert',
-    statusProcessed: 'Detenida por mantenimiento',
-    isMoving: false
-  },
-  {
-    id: 'CB004',
-    position: { x: 72, y: 28 },
-    velocity: 4.5,
-    passengers: 6,
-    eta: '14:38',
-    vibrationLast: 0.6,
-    vibrationAvg: 0.65,
-    status: 'normal',
-    statusProcessed: 'En funcionamiento normal',
-    isMoving: true
-  },
-  {
-    id: 'CB005',
-    position: { x: 30, y: 70 },
-    velocity: 4.1,
-    passengers: 10,
-    eta: '14:36',
-    vibrationLast: 0.9,
-    vibrationAvg: 0.85,
-    status: 'normal',
-    statusProcessed: 'En funcionamiento normal',
-    isMoving: true
-  }
-];
+// Datos desde microservicio (reemplaza mocks)
+const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8080/api';
 
-const mockVibrationData = [
-  // CB001
-  { time: '14:20', vibration: 0.8, cabinId: 'CB001' },
-  { time: '14:21', vibration: 0.7, cabinId: 'CB001' },
-  { time: '14:22', vibration: 0.9, cabinId: 'CB001' },
-  { time: '14:23', vibration: 0.8, cabinId: 'CB001' },
-  { time: '14:24', vibration: 0.7, cabinId: 'CB001' },
-  { time: '14:25', vibration: 0.8, cabinId: 'CB001' },
-  { time: '14:26', vibration: 0.9, cabinId: 'CB001' },
-  // CB002
-  { time: '14:20', vibration: 1.1, cabinId: 'CB002' },
-  { time: '14:21', vibration: 1.3, cabinId: 'CB002' },
-  { time: '14:22', vibration: 1.0, cabinId: 'CB002' },
-  { time: '14:23', vibration: 1.2, cabinId: 'CB002' },
-  { time: '14:24', vibration: 1.4, cabinId: 'CB002' },
-  { time: '14:25', vibration: 1.1, cabinId: 'CB002' },
-  { time: '14:26', vibration: 1.2, cabinId: 'CB002' },
-  // CB003
-  { time: '14:20', vibration: 2.1, cabinId: 'CB003' },
-  { time: '14:21', vibration: 2.0, cabinId: 'CB003' },
-  { time: '14:22', vibration: 2.2, cabinId: 'CB003' },
-  { time: '14:23', vibration: 2.1, cabinId: 'CB003' },
-  { time: '14:24', vibration: 2.0, cabinId: 'CB003' },
-  { time: '14:25', vibration: 2.1, cabinId: 'CB003' },
-  { time: '14:26', vibration: 2.2, cabinId: 'CB003' },
-  // CB004
-  { time: '14:20', vibration: 0.6, cabinId: 'CB004' },
-  { time: '14:21', vibration: 0.5, cabinId: 'CB004' },
-  { time: '14:22', vibration: 0.7, cabinId: 'CB004' },
-  { time: '14:23', vibration: 0.6, cabinId: 'CB004' },
-  { time: '14:24', vibration: 0.5, cabinId: 'CB004' },
-  { time: '14:25', vibration: 0.6, cabinId: 'CB004' },
-  { time: '14:26', vibration: 0.7, cabinId: 'CB004' },
-  // CB005
-  { time: '14:20', vibration: 0.9, cabinId: 'CB005' },
-  { time: '14:21', vibration: 0.8, cabinId: 'CB005' },
-  { time: '14:22', vibration: 1.0, cabinId: 'CB005' },
-  { time: '14:23', vibration: 0.9, cabinId: 'CB005' },
-  { time: '14:24', vibration: 0.8, cabinId: 'CB005' },
-  { time: '14:25', vibration: 0.9, cabinId: 'CB005' },
-  { time: '14:26', vibration: 1.0, cabinId: 'CB005' }
-];
+const fetchJSON = async (url) => {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Request failed ${r.status} ${url}`);
+  return r.json();
+};
 
-// Función para calcular KPIs
-const calculateKPIs = () => {
-  const cabins = mockCabins;
-  
-  // RMS Promedio
-  const avgVibration = cabins.reduce((sum, cabin) => sum + cabin.vibrationAvg, 0) / cabins.length;
-  
-  // % Cabinas en Alerta
-  const alertCabins = cabins.filter(cabin => cabin.status === 'alert' || cabin.status === 'warning').length;
-  const alertPercentage = (alertCabins / cabins.length) * 100;
-  
-  // Pasajeros/Hora (simulado basado en total de pasajeros)
-  const totalPassengers = cabins.reduce((sum, cabin) => sum + cabin.passengers, 0);
-  const passengersPerHour = Math.round(totalPassengers * 2.5); // Factor de simulación
-  
-  // Velocidad Promedio
-  const avgVelocity = cabins.reduce((sum, cabin) => sum + cabin.velocity, 0) / cabins.length;
-  
+const mapHealthToStatus = (health) => {
+  const s = (health?.system_status || health?.status || '').toString().toLowerCase();
+  if (s.includes('critical') || s.includes('alert')) return 'alert';
+  if (s.includes('warn')) return 'warning';
+  return 'normal';
+};
+
+const buildKPIs = (summary, systemHealth, recent) => {
+  const avgRms = Number(systemHealth?.avg_rms ?? 0);
+  const alertRate = Number(systemHealth?.alert_rate ?? 0);
+  const total = Array.isArray(recent) ? recent.length : 0;
+  const avgVelocity = Array.isArray(recent) && recent.length
+    ? recent.reduce((s, m) => s + (Number(m.velocidad) || 0), 0) / recent.length
+    : 0;
   return [
-    {
-      id: 'kpi1',
-      title: 'RMS Promedio',
-      value: avgVibration.toFixed(2),
-      change: -5.2,
-      status: 'positive'
-    },
-    {
-      id: 'kpi2',
-      title: '% Cabinas en Alerta',
-      value: `${alertPercentage.toFixed(0)}%`,
-      change: 2.1,
-      status: 'negative'
-    },
-    {
-      id: 'kpi3',
-      title: 'Pasajeros/Hora',
-      value: passengersPerHour.toLocaleString(),
-      change: 8.7,
-      status: 'positive'
-    },
-    {
-      id: 'kpi4',
-      title: 'Velocidad Promedio',
-      value: `${avgVelocity.toFixed(1)} m/s`,
-      change: 0.3,
-      status: 'neutral'
-    }
+    { id: 'kpi1', title: 'RMS Promedio', value: avgRms.toFixed(3), change: 0, status: 'neutral' },
+    { id: 'kpi2', title: '% Cabinas en Alerta', value: `${Math.round(alertRate * 100)}%`, change: 0, status: 'neutral' },
+    { id: 'kpi3', title: 'Pasajeros/Hora', value: '—', change: 0, status: 'neutral' },
+    { id: 'kpi4', title: 'Velocidad Promedio', value: `${avgVelocity.toFixed(1)} m/s`, change: 0, status: 'neutral' },
   ];
 };
 
-// Función para generar datos de pasajeros por hora
-const generatePassengersSeries = () => {
-  const hours = ['08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00'];
-  return hours.map(hour => ({
-    hour,
-    passengers: Math.floor(Math.random() * 200) + 100
-  }));
+const buildCabins = (sensorsStatus, recent) => {
+  const lastBySensor = new Map();
+  (recent || []).forEach((m) => {
+    const sid = m.sensor_id ?? m.sensorId;
+    if (!sid) return;
+    const prev = lastBySensor.get(sid);
+    if (!prev || new Date(m.timestamp) > new Date(prev.timestamp)) {
+      lastBySensor.set(sid, m);
+    }
+  });
+
+  return (sensorsStatus || []).map((s) => {
+    const sid = s.sensor_id;
+    const last = lastBySensor.get(sid) || {};
+    const id = String(s.cabina_id || `SENSOR-${sid}`);
+    return {
+      id,
+      position: { x: 0, y: 0 },
+      velocity: Number(last.velocidad) || 0,
+      passengers: 0,
+      eta: '-',
+      vibrationLast: Number(last.rms) || 0,
+      vibrationAvg: Number(last.rms) || 0,
+      status: mapHealthToStatus(s.health),
+      statusProcessed: s.health?.system_status || s.health?.status || 'normal',
+      isMoving: (Number(last.velocidad) || 0) > 0,
+    };
+  });
 };
 
-// Función para generar datos históricos
-const getCabinHistoricalData = () => {
-  return mockCabins.map(cabin => ({
-    cabinId: cabin.id,
-    timestamp: '2025-01-09 14:30:00',
-    position: cabin.position,
-    velocity: cabin.velocity,
-    vibration: cabin.vibrationLast,
-    passengers: cabin.passengers,
-    status: cabin.status
-  }));
+const buildVibrationSeries = (recent, cabins) => {
+  // Build sensor->cabinId map from provided cabins
+  const sensorToCabin = new Map();
+  (cabins || []).forEach(c => {
+    if (c.sensor_id) sensorToCabin.set(Number(c.sensor_id), String(c.id));
+  });
+  const series = (recent || []).slice(0, 500).map((m) => {
+    const mappedId = sensorToCabin.get(Number(m.sensor_id));
+    const cabId = mappedId || String(`SENSOR-${m.sensor_id}`);
+    return {
+      time: new Date(m.timestamp).toTimeString().slice(0,5),
+      vibration: Number(m.rms) || 0,
+      cabinId: cabId,
+    };
+  });
+  return series;
 };
 
 export const main = asyncHandler(async (req, res) => {
-  const kpis = calculateKPIs();
-  const vibrationSeries = mockVibrationData.map(data => ({
-    time: data.time,
-    vibration: data.vibration,
-    cabinId: data.cabinId
+  const base = ANALYTICS_BASE_URL.replace(/\/$/, '');
+  const [summaryResp, healthResp, sensorsResp, recentResp, cabinsResp] = await Promise.all([
+    fetchJSON(`${base}/analytics/summary`),
+    fetchJSON(`${base}/analytics/system-health`),
+    fetchJSON(`${base}/analytics/sensors/status`),
+    fetchJSON(`${base}/data/measurements/recent?limit=500`),
+    fetchJSON(`${base}/analytics/cabins/summary`),
+  ]);
+
+  const summary = summaryResp?.data || {};
+  const systemHealth = healthResp?.data || {};
+  const sensors = sensorsResp?.data?.sensors || [];
+  const recent = recentResp?.data?.measurements || [];
+  const cabinsSummary = cabinsResp?.data?.cabins || [];
+
+  // Preferir lista completa de cabinas desde microservicio
+  let cabins = [];
+  if (Array.isArray(cabinsSummary) && cabinsSummary.length) {
+    const mapEstado = (estadoRaw) => {
+      const e = (estadoRaw || '').toString().toLowerCase();
+      if (e.includes('fuera') || e.includes('fall') || e.includes('crit')) return 'alert';
+      if (e.includes('manten') || e.includes('warn')) return 'warning';
+      return 'normal';
+    };
+    cabins = cabinsSummary.map((c) => ({
+      id: String(c.codigo_interno || c.cabina_id),
+      sensor_id: c.sensor_id ?? null,
+      position: { x: Number(c.latest?.longitud) || 0, y: Number(c.latest?.latitud) || 0 },
+      velocity: Number(c.latest?.velocidad) || 0,
+      passengers: 0,
+      eta: '-',
+      vibrationLast: Number(c.latest?.rms) || 0,
+      vibrationAvg: Number(c.latest?.rms) || 0,
+      status: mapEstado(c.estado_actual),
+      statusProcessed: c.estado_actual || 'normal',
+      isMoving: (Number(c.latest?.velocidad) || 0) > 0,
+    }));
+  } else {
+    cabins = buildCabins(sensors, recent);
+  }
+  const kpis = buildKPIs(summary, systemHealth, recent);
+  const vibrationSeries = buildVibrationSeries(recent, cabins);
+  const passengersSeries = [];
+  // historicalData basado en mediciones recientes unidas a cabina
+  const sensorToCabin = new Map();
+  cabins.forEach(c => { if (c.sensor_id) sensorToCabin.set(Number(c.sensor_id), String(c.id)); });
+  const historicalData = (recent || []).slice(0, 500).map(m => ({
+    cabinId: sensorToCabin.get(Number(m.sensor_id)) || String(`SENSOR-${m.sensor_id}`),
+    timestamp: new Date(m.timestamp).toISOString().slice(0,16).replace('T',' '),
+    position: { x: 0, y: 0 },
+    velocity: Number(m.velocidad) || 0,
+    vibration: Number(m.rms) || 0,
+    passengers: 0,
+    status: (cabins.find(c => c.sensor_id === m.sensor_id)?.status) || 'normal',
   }));
-  const passengersSeries = generatePassengersSeries();
-  const historicalData = getCabinHistoricalData();
-  
-  console.log('Enviando datos de vibración:', vibrationSeries.slice(0, 5)); // Log primeros 5 elementos
-  console.log('Total de datos de vibración:', vibrationSeries.length);
-  
+
   res.json({
     ok: true,
     data: {
       kpis,
       vibrationSeries,
       passengersSeries,
-      cabins: mockCabins,
+      cabins,
       historicalData,
       user: req.user,
       timestamp: new Date().toISOString(),

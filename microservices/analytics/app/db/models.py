@@ -2,6 +2,12 @@ from sqlalchemy import Column, Integer, BigInteger, String, DateTime, Numeric, F
 from sqlalchemy.orm import relationship
 from .session import Base
 
+class Cabina(Base):
+    __tablename__ = "cabinas"
+    cabina_id = Column(Integer, primary_key=True)
+    codigo_interno = Column(String)
+    estado_actual = Column(String)
+
 class Sensor(Base):
     __tablename__ = "sensores"
     sensor_id = Column(Integer, primary_key=True)

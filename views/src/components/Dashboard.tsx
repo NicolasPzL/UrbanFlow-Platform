@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle, ChevronDown } from "lucide-react";
+import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle } from "lucide-react";
 
 type DashboardData = {
   kpis?: { id: string; title: string; value: string; change: number; status: 'positive'|'negative'|'neutral' }[];
@@ -22,11 +22,35 @@ export function Dashboard() {
   useEffect(() => {
     (async () => {
       try {
+        // Cargar dashboard principal (Node)
         const resp = await fetch('/api/dashboard', { credentials: 'include' });
         if (!resp.ok) throw new Error('No se pudo cargar el dashboard');
         const json = await resp.json();
         console.log('Datos del dashboard recibidos:', json);
         setData(json.data || {});
+        if (Array.isArray(json?.data?.cabins) && json.data.cabins.length > 0) {
+          const firstId = String(json.data.cabins[0].id);
+          setSelectedCabin(firstId);
+        }
+        // Paralelamente, intentar cargar resumen de analytics (FastAPI vía proxy)
+        Promise.allSettled([
+          fetch('/api/analytics/summary', { credentials: 'include' }),
+          fetch('/api/analytics/system-health', { credentials: 'include' })
+        ]).then(async (results) => {
+          try {
+            const [r1, r2] = results;
+            if (r1.status === 'fulfilled' && r1.value.ok) {
+              const a1 = await r1.value.json();
+              console.log('Resumen analytics:', a1);
+            }
+            if (r2.status === 'fulfilled' && r2.value.ok) {
+              const a2 = await r2.value.json();
+              console.log('Salud del sistema (analytics):', a2);
+            }
+          } catch (e) {
+            console.warn('No se pudo procesar analytics:', e);
+          }
+        });
       } catch (e: any) {
         console.error('Error al cargar dashboard:', e);
         setError(e?.message || 'Error al cargar');
@@ -80,6 +104,14 @@ export function Dashboard() {
       default: return 'outline';
     }
   };
+
+  // Helpers de formato para mostrar mejor los datos faltantes
+  const fmtNum = (v: any, digits = 2) => {
+    const n = Number(v);
+    if (Number.isNaN(n)) return '-';
+    return n.toFixed(digits);
+  };
+  const fmtRms = (v: any) => (Number.isNaN(Number(v)) ? '-' : `${Number(v).toFixed(4)} RMS`);
 
   const formatChange = (change: number) => {
     const isPositive = change > 0;
@@ -231,8 +263,9 @@ export function Dashboard() {
             <CardTitle>Historial de Cabinas</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="max-h-96 overflow-y-auto rounded border">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-white z-10">
                 <TableRow>
                   <TableHead>ID Cabina</TableHead>
                   <TableHead>Timestamp</TableHead>
@@ -249,10 +282,10 @@ export function Dashboard() {
                     <TableCell className="font-medium">{record.cabinId}</TableCell>
                     <TableCell>{record.timestamp}</TableCell>
                     <TableCell>
-                      {record.position.x.toFixed(1)}, {record.position.y.toFixed(1)}
+                      {((record.position?.x ?? 0).toFixed(1))}, {((record.position?.y ?? 0).toFixed(1))}
                     </TableCell>
-                    <TableCell>{record.velocity} m/s</TableCell>
-                    <TableCell>{record.vibration} RMS</TableCell>
+                    <TableCell>{fmtNum(record.velocity)} {fmtNum(record.velocity) === '-' ? '' : 'm/s'}</TableCell>
+                    <TableCell>{fmtRms(record.vibration)}</TableCell>
                     <TableCell>{record.passengers}</TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(record.status)}>
@@ -264,6 +297,7 @@ export function Dashboard() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </CardContent>
         </Card>
 
@@ -279,20 +313,21 @@ export function Dashboard() {
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="font-medium">{cabin.id}</span>
-                      <div className={`w-3 h-3 rounded-full ${getStatusColor(cabin.status)}`}></div>
+                      <div className={`w-3 h-3 rounded-full ${getStatusColor(cabin.status || 'unknown')}`}></div>
                     </div>
                     <div className="space-y-1 text-sm text-gray-600">
-                      <div>Vel: {cabin.velocity} m/s</div>
-                      <div>Vib: {cabin.vibrationLast} RMS</div>
-                      <div>Pax: {cabin.passengers}</div>
+                      <div>Vel: {fmtNum(cabin.velocity)} {fmtNum(cabin.velocity) === '-' ? '' : 'm/s'}</div>
+                      <div>Vib: {fmtRms(cabin.vibrationLast)}</div>
+                      <div>Pax: {cabin.passengers ?? 0}</div>
+                      <div>Sensor: {cabin.sensor_id ? cabin.sensor_id : 'Sin sensor'}</div>
                       <div>ETA: {cabin.eta}</div>
                     </div>
                     <Badge 
-                      variant={getStatusVariant(cabin.status)} 
+                      variant={getStatusVariant(cabin.status || 'default')} 
                       className="mt-2 text-xs"
                     >
                       {cabin.status === 'normal' ? 'Normal' : 
-                       cabin.status === 'warning' ? 'Alerta' : 'Crítico'}
+                       cabin.status === 'warning' ? 'Alerta' : cabin.status === 'alert' ? 'Crítico' : '—'}
                     </Badge>
                   </CardContent>
                 </Card>
