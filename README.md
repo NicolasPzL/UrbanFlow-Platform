@@ -175,19 +175,53 @@ Express servirá los estáticos desde `views/build/` en `http://localhost:3000`.
 ### 6) Credenciales de prueba
 Después de cargar datos, inicia sesión desde el botón “Iniciar Sesión”. La API espera body `{ correo, password }`.
 
-### 7) Microservicio de Analítica (opcional)
-Ubicación: `microservices/analytics/` (FastAPI).
+### 7) Microservicio de Analítica (FastAPI)
+Ubicación: `microservices/analytics/`
 
+#### 7.1 Abrir Terminal Integrada (VS Code)
+- Abre la carpeta del proyecto.
+- Menú: View > Terminal (o `Ctrl+``).
+- Asegúrate de estar en la ruta del microservicio:
 ```
 cd microservices/analytics
-python -m venv .venv && . .venv/Scripts/activate   # Windows
-pip install -r requirements.txt
-set ANALYTICS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/urbanflow_db
-uvicorn app.main:app --reload --port 8080
 ```
 
-Docker (alternativo):
+#### 7.2 Crear y activar entorno virtual (Windows PowerShell)
+```
+python -m venv venv
+.\n+venv\Scripts\Activate.ps1
+```
 
+#### 7.3 Instalar requerimientos
+```
+python -m pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+```
+
+#### 7.4 Variables de entorno (opcional)
+- El microservicio carga automáticamente el `.env` de la raíz y construye la `DATABASE_URL` con `DB_*` si no encuentra `ANALYTICS_DATABASE_URL`.
+- Si deseas especificar una URL distinta solo para analítica:
+```
+$env:ANALYTICS_DATABASE_URL="postgresql+psycopg2://postgres:postgres@127.0.0.1:5432/urbanflow_db"
+```
+
+#### 7.5 Ejecutar FastAPI (Uvicorn)
+```
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+```
+- Salud: `http://localhost:8080/health`
+
+#### 7.6 Integración con backend (proxy)
+- En el `.env` del backend Node (raíz) define:
+```
+ANALYTICS_BASE_URL=http://localhost:8080/api
+```
+- Reinicia el backend: `npm run dev`
+- Endpoints desde el front/back:
+  - Staff: `/api/analytics/*`, `/api/data/*`, `/api/models*`, `/api/predictions*`
+  - Cliente: `/api/citizen/analytics/*`
+
+#### 7.7 Docker (alternativo)
 ```
 cd microservices/analytics
 docker build -t urbanflow-analytics:dev .

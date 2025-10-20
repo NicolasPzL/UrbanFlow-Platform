@@ -68,11 +68,13 @@ class AnalyticsService:
         
         alert_count = sum(1 for pred in recent_predictions if pred.clase_predicha == 'alerta')
         unusual_count = sum(1 for pred in recent_predictions if pred.clase_predicha == 'inusual')
+        n_preds = len(recent_predictions)
+        alert_rate = float(alert_count / n_preds) if n_preds else 0.0
         
         # Determinar estado del sistema
-        if avg_rms > 1.5 or (alert_count / len(recent_predictions)) > 0.1:
+        if avg_rms > 1.5 or (n_preds > 0 and alert_rate > 0.1):
             system_status = "critical"
-        elif avg_rms > 1.0 or (alert_count / len(recent_predictions)) > 0.05:
+        elif avg_rms > 1.0 or (n_preds > 0 and alert_rate > 0.05):
             system_status = "warning"
         else:
             system_status = "healthy"
@@ -84,7 +86,7 @@ class AnalyticsService:
             "total_measurements_7d": len(recent_measurements),
             "alert_predictions": alert_count,
             "unusual_predictions": unusual_count,
-            "alert_rate": float(alert_count / len(recent_predictions)) if recent_predictions else 0.0
+            "alert_rate": alert_rate
         }
     
     def get_sensor_analytics(self, sensor_id: int, days: int = 7):

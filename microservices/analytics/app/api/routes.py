@@ -146,6 +146,83 @@ def get_recent_measurements(limit: int = 100, db: Session = Depends(get_db)):
     
     return {"ok": True, "data": {"measurements": measurement_data}}
 
+@api_router.get("/data/measurements/by-cab/{cabina_id}")
+def get_measurements_by_cabin(cabina_id: int, limit: int = 300, db: Session = Depends(get_db)):
+    """Obtiene mediciones recientes para una cabina resolviendo su sensor."""
+    sensor = db.query(m.Sensor).filter(m.Sensor.cabina_id == cabina_id).first()
+    if not sensor:
+        return {"ok": True, "data": {"measurements": []}}
+
+    measurements = db.query(m.Medicion).filter(
+        m.Medicion.sensor_id == sensor.sensor_id
+    ).order_by(desc(m.Medicion.timestamp)).limit(limit).all()
+
+    measurement_data = []
+    for med in measurements:
+        measurement_data.append({
+            "medicion_id": int(med.medicion_id),
+            "timestamp": med.timestamp.isoformat(),
+            "rms": float(med.rms) if med.rms else None,
+            "velocidad": float(med.velocidad) if med.velocidad else None,
+            "sensor_id": sensor.sensor_id,
+            "cabina_id": cabina_id,
+        })
+    return {"ok": True, "data": {"measurements": measurement_data}}
+
+# Cabins endpoints
+@api_router.get("/analytics/cabins/summary")
+def get_cabins_summary(db: Session = Depends(get_db)):
+    """Devuelve todas las cabinas (aunque no tengan sensor) con su último estado y medición (si existe)."""
+    # 1) Todas las cabinas
+    cabinas = db.query(m.Cabina).order_by(m.Cabina.cabina_id).all()
+
+    # 2) Sensores por cabina
+    sensores = db.query(m.Sensor).all()
+    sensor_by_cab = {s.cabina_id: s.sensor_id for s in sensores}
+
+    # 3) Última medición por sensor (bulk)
+    if sensores:
+        sensor_ids = [s.sensor_id for s in sensores]
+        subq = (
+            db.query(
+                m.Medicion.sensor_id.label("sensor_id"),
+                func.max(m.Medicion.timestamp).label("max_ts"),
+            )
+            .filter(m.Medicion.sensor_id.in_(sensor_ids))
+            .group_by(m.Medicion.sensor_id)
+            .subquery()
+        )
+
+        latest = (
+            db.query(m.Medicion)
+            .join(subq, (m.Medicion.sensor_id == subq.c.sensor_id) & (m.Medicion.timestamp == subq.c.max_ts))
+            .all()
+        )
+        latest_by_sensor = {int(med.sensor_id): med for med in latest}
+    else:
+        latest_by_sensor = {}
+
+    # 4) Armar respuesta
+    result = []
+    for cab in cabinas:
+        sid = sensor_by_cab.get(cab.cabina_id)
+        med = latest_by_sensor.get(sid) if sid else None
+        result.append({
+            "cabina_id": int(cab.cabina_id),
+            "codigo_interno": cab.codigo_interno,
+            "estado_actual": cab.estado_actual,
+            "sensor_id": int(sid) if sid else None,
+            "latest": None if not med else {
+                "timestamp": med.timestamp.isoformat() if med.timestamp else None,
+                "rms": float(med.rms) if med.rms is not None else None,
+                "velocidad": float(med.velocidad) if med.velocidad is not None else None,
+                "latitud": float(med.latitud) if med.latitud is not None else None,
+                "longitud": float(med.longitud) if med.longitud is not None else None,
+            }
+        })
+
+    return {"ok": True, "data": {"cabins": result}}
+
 @api_router.get("/data/measurements/sensor/{sensor_id}")
 def get_sensor_measurements(sensor_id: int, limit: int = 50, db: Session = Depends(get_db)):
     """Obtiene las mediciones de un sensor específico"""
