@@ -7,6 +7,27 @@ export interface User {
   lastLogin?: string;
 }
 
+// Types for database data (from backend API)
+export interface CabinData {
+  cabina_id: number;
+  codigo_interno: string;
+  estado_actual: 'operativo' | 'inusual' | 'alerta';
+  status?: 'normal' | 'warning' | 'alert'; // mapped version
+  latitud: number;
+  longitud: number;
+  velocidad: number;
+  timestamp?: string;
+}
+
+export interface StationData {
+  estacion_id: number;
+  nombre: string;
+  tipo: string;
+  latitud: number;
+  longitud: number;
+}
+
+// Legacy types for mock data (keeping for compatibility)
 export interface Cabin {
   id: string;
   position: { x: number; y: number };

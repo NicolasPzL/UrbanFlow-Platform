@@ -21,7 +21,7 @@ const REFRESH_JWT_EXPIRES_IN = process.env.REFRESH_JWT_EXPIRES_IN || '7d';
 const AUTH_COOKIE_NAME = process.env.AUTH_COOKIE_NAME || 'access_token';
 const REFRESH_COOKIE_NAME = process.env.REFRESH_COOKIE_NAME || 'refresh_token';
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
-const COOKIE_SAME_SITE = process.env.COOKIE_SAME_SITE || (IS_PROD ? 'Strict' : 'Lax'); // 'Strict'|'Lax'|'None'
+const COOKIE_SAME_SITE = process.env.COOKIE_SAME_SITE || (IS_PROD ? 'Strict' : 'None'); // 'Strict'|'Lax'|'None'
 const COOKIE_SECURE = process.env.COOKIE_SECURE
   ? process.env.COOKIE_SECURE === 'true'
   : IS_PROD; // true en producción por defecto

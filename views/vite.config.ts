@@ -1,10 +1,22 @@
 
-  import { defineConfig } from 'vite';
-  import react from '@vitejs/plugin-react-swc';
-  import path from 'path';
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react-swc';
+import path from 'path';
 
-  export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Cargar variables del .env principal (raíz del proyecto)
+  const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
+  
+  return {
     plugins: [react()],
+    define: {
+      // Exponer variables específicas al frontend desde el .env principal
+      'import.meta.env.VITE_MAPBOX_ACCESS_TOKEN': JSON.stringify(env.MAPBOX_ACCESS_TOKEN),
+    },
+    optimizeDeps: {
+      include: ['react-map-gl', 'mapbox-gl'],
+      exclude: ['@mapbox/mapbox-gl-language'],
+    },
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
       alias: {
@@ -53,9 +65,13 @@
     build: {
       target: 'esnext',
       outDir: 'build',
+      commonjsOptions: {
+        include: [/react-map-gl/, /mapbox-gl/, /node_modules/],
+      },
     },
     server: {
       port: 3000,
       open: true,
     },
-  });
+  };
+});

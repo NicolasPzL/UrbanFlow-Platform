@@ -27,6 +27,7 @@
     "node": ">=18.18.0"
   },
   "dependencies": {
+    "@types/mapbox-gl": "^3.4.1",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -36,12 +37,15 @@
     "express-validator": "^7.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "mapbox-gl": "^3.15.0",
     "morgan": "^1.10.1",
     "pg": "^8.11.3",
+    "react-map-gl": "^8.1.0",
     "xss": "^1.0.15",
     "xss-clean": "^0.1.4"
   },
   "devDependencies": {
+    "@types/react-map-gl": "^6.1.7",
     "nodemon": "^3.1.10"
   }
 }
