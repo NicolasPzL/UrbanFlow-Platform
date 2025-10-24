@@ -57,9 +57,8 @@ const GeoportalMap = ({
     if (!mapboxToken) {
       setMapError('El token de Mapbox no está configurado. Por favor, verifica tus variables de entorno.');
       console.error('Error: VITE_MAPBOX_ACCESS_TOKEN no está definido');
-    } else if (typeof window !== 'undefined' && !window.mapboxgl) {
-      setMapError('Error al cargar Mapbox GL. Por favor, verifica tu conexión a internet.');
     }
+    // Removemos la verificación de window.mapboxgl ya que puede causar problemas
   }, [mapboxToken]);
 
   if (mapError) {
@@ -107,13 +106,12 @@ const GeoportalMap = ({
               longitude: -75.56,  // Centrado en Medellín por defecto
               latitude: 6.25,
               zoom: 13,
-              pitch: 60,
-              bearing: -20,
+              pitch: 45,
+              bearing: -17.6,
             }}
             style={{ width, height }}
             mapStyle="mapbox://styles/mapbox/streets-v12"
             mapboxAccessToken={mapboxToken}
-            terrain={{ source: 'mapbox-dem', exaggeration: 1.5 }}
             reuseMaps
             onError={(e: any) => {
               console.error('Error en el mapa:', e);
@@ -121,54 +119,48 @@ const GeoportalMap = ({
             }}
             onLoad={(e: any) => {
               setMapError(null);
+              console.log('Mapa cargado correctamente');
+              
+              // Configuración básica del mapa - sin capas 3D por ahora
               const map = e.target;
               
-              // Add 3D buildings layer
-              if (map.getLayer('3d-buildings')) {
-                map.removeLayer('3d-buildings');
+              // Solo agregar edificios 3D si el mapa está completamente cargado
+              try {
+                if (map.getSource('composite')) {
+                  map.addLayer({
+                    'id': '3d-buildings',
+                    'source': 'composite',
+                    'source-layer': 'building',
+                    'filter': ['==', 'extrude', 'true'],
+                    'type': 'fill-extrusion',
+                    'minzoom': 15,
+                    'paint': {
+                      'fill-extrusion-color': '#aaa',
+                      'fill-extrusion-height': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        15,
+                        0,
+                        15.05,
+                        ['get', 'height']
+                      ],
+                      'fill-extrusion-base': [
+                        'interpolate',
+                        ['linear'],
+                        ['zoom'],
+                        15,
+                        0,
+                        15.05,
+                        ['get', 'min_height']
+                      ],
+                      'fill-extrusion-opacity': 0.6
+                    }
+                  });
+                }
+              } catch (error) {
+                console.warn('No se pudieron agregar los edificios 3D:', error);
               }
-              
-              map.addLayer({
-                'id': '3d-buildings',
-                'source': 'composite',
-                'source-layer': 'building',
-                'filter': ['==', 'extrude', 'true'],
-                'type': 'fill-extrusion',
-                'minzoom': 15,
-                'paint': {
-                  'fill-extrusion-color': '#aaa',
-                  'fill-extrusion-height': [
-                    'interpolate',
-                    ['linear'],
-                    ['zoom'],
-                    15,
-                    0,
-                    15.05,
-                    ['get', 'height']
-                  ],
-                  'fill-extrusion-base': [
-                    'interpolate',
-                    ['linear'],
-                    ['zoom'],
-                    15,
-                    0,
-                    15.05,
-                    ['get', 'min_height']
-                  ],
-                  'fill-extrusion-opacity': 0.6
-                }
-              });
-
-              // Add sky layer for better 3D visualization
-              map.addLayer({
-                'id': 'sky',
-                'type': 'sky',
-                'paint': {
-                  'sky-type': 'atmosphere',
-                  'sky-atmosphere-sun': [0.0, 0.0],
-                  'sky-atmosphere-sun-intensity': 15
-                }
-              });
             }}
             attributionControl={false}
       >

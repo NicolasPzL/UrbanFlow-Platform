@@ -49,8 +49,10 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      workerSrc: ["'self'", "blob:"],
       imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
     },
   },
 }));
