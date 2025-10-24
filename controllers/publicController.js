@@ -1,19 +1,26 @@
 // controllers/publicController.js
 import { asyncHandler } from '../middlewares/asyncHandler.js';
+import { getPublicData } from '../models/geoportalModel.js';
 
-export const publicMap = asyncHandler(async (_req, res) => {
-  // Placeholder hasta conectar con fuentes reales
+export const publicMap = asyncHandler(async (_req, res, next) => {
+  // Llamamos al modelo para obtener los datos reales de la base de datos.
+  const mapData = await getPublicData();
+
+  // Usamos los datos reales para construir la respuesta.
   const data = {
-    message: 'Mapa público',
+    message: 'Datos del geoportal público cargados exitosamente.',
     timestamp: new Date().toISOString(),
-    stations: [], // TODO: poblar desde BD
-    cabins: [], // TODO: poblar desde sensores/BD
+    stations: mapData.stations, // Dato real desde la BD
+    cabins: mapData.cabins,     // Dato real desde la BD
     stats: {
-      activeCabins: 0,
-      totalPassengers: 0,
-      avgETA: '--:--',
+      activeCabins: mapData.cabins.length, // Conteo real de cabinas
+      totalPassengers: 0, // Placeholder
+      avgETA: '--:--',      // Placeholder
+      lastUpdate: new Date().toISOString(),
     },
   };
+
+  // Enviamos la respuesta con el formato que ya usas.
   res.json({ ok: true, data });
 });
 

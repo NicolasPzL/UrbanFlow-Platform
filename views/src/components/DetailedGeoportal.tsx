@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { InteractiveMap } from "./InteractiveMap";
+import InteractiveMap from "./GeoportalMap";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -33,17 +33,33 @@ export function DetailedGeoportal() {
 
   const filteredCabins = filteredStatus === "all"
     ? cabins
-    : cabins.filter((c: any) => c.status === filteredStatus);
+    : cabins.filter((c: any) => {
+        const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
+                                   c.estado_actual === 'inusual' ? 'warning' : 'alert');
+        return status === filteredStatus;
+      });
 
   const statusCounts = {
-    normal: cabins.filter((c: any) => c.status === 'normal').length,
-    warning: cabins.filter((c: any) => c.status === 'warning').length,
-    alert: cabins.filter((c: any) => c.status === 'alert').length,
+    normal: cabins.filter((c: any) => {
+      const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
+                                 c.estado_actual === 'inusual' ? 'warning' : 'alert');
+      return status === 'normal';
+    }).length,
+    warning: cabins.filter((c: any) => {
+      const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
+                                 c.estado_actual === 'inusual' ? 'warning' : 'alert');
+      return status === 'warning';
+    }).length,
+    alert: cabins.filter((c: any) => {
+      const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
+                                 c.estado_actual === 'inusual' ? 'warning' : 'alert');
+      return status === 'alert';
+    }).length,
   };
 
-  const totalPassengers = cabins.reduce((sum: number, c: any) => sum + (c.passengers || 0), 0);
-  const avgVibration = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.vibrationLast || 0), 0) / cabins.length).toFixed(2) : '0.00';
-  const avgVelocity = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.velocity || 0), 0) / cabins.length).toFixed(1) : '0.0';
+  const totalPassengers = 0; // Placeholder - no tenemos datos de pasajeros en la BD
+  const avgVibration = '0.00'; // Placeholder - no tenemos datos de vibración en la BD
+  const avgVelocity = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.velocidad || 0), 0) / cabins.length).toFixed(1) : '0.0';
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -249,57 +265,58 @@ export function DetailedGeoportal() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
-              {filteredCabins.map((cabin) => (
-                <div key={cabin.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+              {filteredCabins.map((cabin) => {
+                const status = cabin.status || (cabin.estado_actual === 'operativo' ? 'normal' : 
+                                               cabin.estado_actual === 'inusual' ? 'warning' : 'alert');
+                return (
+                  <div key={cabin.cabina_id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex items-start justify-between">
                     <div className="space-y-2">
                       <div className="flex items-center space-x-3">
-                        <h4 className="font-medium">Cabina {cabin.id}</h4>
+                        <h4 className="font-medium">Cabina {cabin.codigo_interno}</h4>
                         <Badge 
-                          variant={cabin.status === 'normal' ? 'default' : 
-                                  cabin.status === 'warning' ? 'secondary' : 'destructive'}
+                          variant={status === 'normal' ? 'default' : 
+                                  status === 'warning' ? 'secondary' : 'destructive'}
                         >
-                          {cabin.status === 'normal' ? 'Normal' : 
-                           cabin.status === 'warning' ? 'Alerta' : 'Crítico'}
+                          {status === 'normal' ? 'Normal' : 
+                           status === 'warning' ? 'Alerta' : 'Crítico'}
                         </Badge>
-                        {!cabin.isMoving && (
-                          <Badge variant="outline">Detenida</Badge>
-                        )}
                       </div>
                       
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                         <div>
                           <span className="text-gray-600">Posición:</span>
                           <div className="font-medium">
-                            {cabin.position.x.toFixed(1)}%, {cabin.position.y.toFixed(1)}%
+                            {cabin.latitud.toFixed(4)}, {cabin.longitud.toFixed(4)}
                           </div>
                         </div>
                         <div>
                           <span className="text-gray-600">Velocidad:</span>
-                          <div className="font-medium">{cabin.velocity} m/s</div>
+                          <div className="font-medium">{cabin.velocidad} m/s</div>
                         </div>
                         <div>
                           <span className="text-gray-600">Vibración:</span>
-                          <div className="font-medium">{cabin.vibrationLast} RMS</div>
+                          <div className="font-medium">N/A</div>
                         </div>
                         <div>
                           <span className="text-gray-600">Pasajeros:</span>
-                          <div className="font-medium">{cabin.passengers}</div>
+                          <div className="font-medium">N/A</div>
                         </div>
                       </div>
                       
                       <div className="text-sm text-gray-600">
-                        <strong>Estado:</strong> {cabin.statusProcessed}
+                        <strong>Estado:</strong> {cabin.estado_actual}
                       </div>
                     </div>
                     
                     <div className="text-right">
                       <div className="text-sm text-gray-600">ETA</div>
-                      <div className="font-medium">{cabin.eta}</div>
+                      <div className="font-medium">N/A</div>
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

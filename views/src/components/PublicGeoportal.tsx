@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
-import { InteractiveMap } from "./InteractiveMap";
+import React, { useEffect, useState, useCallback } from "react";
+import InteractiveMap from "./GeoportalMap";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
-import { Activity, MapPin, Users, Clock } from "lucide-react";
+import { Button } from "./ui/button";
+import { Activity, MapPin, Users, Clock, RefreshCw, Wifi, WifiOff } from "lucide-react";
 
 type PublicMapData = {
   message?: string;
@@ -16,21 +17,43 @@ export function PublicGeoportal() {
   const [data, setData] = useState<PublicMapData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('connected');
+
+  const fetchData = useCallback(async (isManualRefresh = false) => {
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    }
+    
+    try {
+      const resp = await fetch('/api/map/public', { credentials: 'include' });
+      if (!resp.ok) throw new Error('No se pudo cargar el geoportal');
+      const json = await resp.json();
+      setData(json.data || {});
+      setLastUpdate(new Date());
+      setError(null);
+      setConnectionStatus('connected');
+    } catch (e: any) {
+      setError(e?.message || 'Error al cargar');
+      setConnectionStatus('disconnected');
+    } finally {
+      setLoading(false);
+      if (isManualRefresh) {
+        setIsRefreshing(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const resp = await fetch('/api/map/public', { credentials: 'include' });
-        if (!resp.ok) throw new Error('No se pudo cargar el geoportal');
-        const json = await resp.json();
-        setData(json.data || {});
-      } catch (e: any) {
-        setError(e?.message || 'Error al cargar');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    fetchData(); // Initial load
+    
+    const interval = setInterval(() => {
+      fetchData(); // Poll every 5 seconds
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   const activeCabins = data?.stats?.activeCabins ?? 0;
   const totalPassengers = data?.stats?.totalPassengers ?? 0;
@@ -41,13 +64,37 @@ export function PublicGeoportal() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="text-center space-y-4 mb-8">
-          <h1 className="text-3xl lg:text-4xl font-bold text-gray-900">
-            Geoportal Urban Flow
-          </h1>
+          <div className="flex items-center justify-center space-x-4">
+            <h1 className="text-3xl lg:text-4xl font-bold text-gray-900">
+              Geoportal Urban Flow
+            </h1>
+            <div className="flex items-center space-x-2">
+              {connectionStatus === 'connected' ? (
+                <Wifi className="w-5 h-5 text-green-500" />
+              ) : (
+                <WifiOff className="w-5 h-5 text-red-500" />
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchData(true)}
+                disabled={isRefreshing}
+                className="flex items-center space-x-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>Actualizar</span>
+              </Button>
+            </div>
+          </div>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
             Monitorea en tiempo real el estado de nuestro sistema de transporte por cable aéreo. 
             Consulta ubicaciones, tiempos estimados y ocupación de las cabinas.
           </p>
+          {lastUpdate && (
+            <p className="text-sm text-gray-500">
+              Última actualización: {lastUpdate.toLocaleTimeString()}
+            </p>
+          )}
         </div>
 
         {/* Status Cards */}
