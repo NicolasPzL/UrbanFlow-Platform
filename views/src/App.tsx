@@ -40,14 +40,21 @@ export default function App() {
     (async () => {
       try {
         const me = await fetch('/api/auth/me', { credentials: 'include' });
-        if (!me.ok) return; // no autenticado
+        if (!me.ok) {
+          // 401 es normal cuando no hay sesión activa, no es un error
+          if (me.status !== 401) {
+            console.warn('Error inesperado al verificar sesión:', me.status);
+          }
+          return; // no autenticado
+        }
         const meJson = await me.json();
         if (meJson?.data) {
           console.debug?.('[auth/me]', meJson.data);
           setAuthState({ isAuthenticated: true, user: normalizeUser(meJson.data) });
         }
-      } catch {
-        // ignorar
+      } catch (error) {
+        // Solo logear errores reales de red, no 401s
+        console.warn('Error de red al verificar sesión:', error);
       }
     })();
   }, []);

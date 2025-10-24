@@ -4,15 +4,8 @@ import react from '@vitejs/plugin-react-swc';
 import path from 'path';
 
 export default defineConfig(({ mode }) => {
-  // Cargar variables del .env principal (raíz del proyecto)
-  const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
-  
   return {
     plugins: [react()],
-    define: {
-      // Exponer variables específicas al frontend desde el .env principal
-      'import.meta.env.VITE_MAPBOX_ACCESS_TOKEN': JSON.stringify(env.MAPBOX_ACCESS_TOKEN),
-    },
     optimizeDeps: {
       include: ['react-map-gl', 'mapbox-gl'],
       exclude: ['@mapbox/mapbox-gl-language'],
