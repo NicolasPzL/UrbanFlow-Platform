@@ -65,6 +65,20 @@ export function CitizenDashboard() {
         const json = await response.json();
         console.log('Datos del dashboard ciudadano recibidos:', json);
         setData(json.data);
+        // Intentar obtener resumen de analytics (FastAPI vía proxy de cliente)
+        Promise.allSettled([
+          fetch('/api/citizen/analytics/summary', { credentials: 'include' })
+        ]).then(async (results) => {
+          try {
+            const [r1] = results;
+            if (r1.status === 'fulfilled' && r1.value.ok) {
+              const a1 = await r1.value.json();
+              console.log('Resumen analytics (cliente):', a1);
+            }
+          } catch (e) {
+            console.warn('No se pudo procesar analytics cliente:', e);
+          }
+        });
       } catch (e: any) {
         console.error('Error al cargar dashboard ciudadano:', e);
         setError(e?.message || 'Error al cargar datos');
