@@ -1,25 +1,31 @@
 import os
 from pydantic import BaseModel
 from typing import Optional
-from dotenv import load_dotenv, find_dotenv
 
-# Carga variables desde el .env del proyecto raíz si existe
-load_dotenv(find_dotenv())
+# Cargar variables de entorno del sistema principal
+try:
+    from dotenv import load_dotenv, find_dotenv
+    # Buscar .env en el directorio raíz del proyecto
+    env_file = find_dotenv()
+    if env_file:
+        load_dotenv(env_file)
+        print(f"Info: Cargando configuración desde: {env_file}")
+    else:
+        print("Info: No se encontró archivo .env, usando valores por defecto")
+except Exception as e:
+    print(f"Info: No se pudo cargar archivo .env: {e}")
+    # Continuar sin archivo .env
 
-# Construcción segura de la URL de base de datos a nivel de módulo (fuera del modelo)
-def _build_db_url_from_discrete_env() -> str:
+# Construcción de la URL de base de datos usando las mismas variables que db.js
+def _build_db_url() -> str:
     user = os.getenv("DB_USER", "postgres")
-    password = os.getenv("DB_PASSWORD", "postgres")
-    host = os.getenv("DB_HOST", "127.0.0.1")
+    password = os.getenv("DB_PASSWORD", "password")  # Usar 'password' como en db.js
+    host = os.getenv("DB_HOST", "localhost")
     port = os.getenv("DB_PORT", "5432")
-    name = os.getenv("DB_NAME", "urbanflow_db")
+    name = os.getenv("DB_NAME", "Urbanflow_db")  # Usar 'Urbanflow_db' como en db.js
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
 
-_DATABASE_URL_DEFAULT = (
-    os.getenv("ANALYTICS_DATABASE_URL")
-    or os.getenv("DATABASE_URL")
-    or _build_db_url_from_discrete_env()
-)
+_DATABASE_URL_DEFAULT = _build_db_url()
 
 class Settings(BaseModel):
     # Database configuration
@@ -44,7 +50,7 @@ class Settings(BaseModel):
     
     # API Configuration
     API_V1_STR: str = "/api"
-    CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8080"]
+    CORS_ORIGINS: list = ["*"]  # Permitir todos los orígenes para desarrollo
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

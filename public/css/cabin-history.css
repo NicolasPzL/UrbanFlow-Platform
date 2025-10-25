@@ -1,0 +1,194 @@
+/* Estilos para la tabla de historial de cabinas */
+.cabin-history-container {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-top: 20px;
+}
+
+.cabin-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.cabin-history-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #1f2937;
+  margin: 0;
+}
+
+.cabin-selector-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cabin-selector-label {
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+}
+
+.cabin-selector {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  font-size: 14px;
+  min-width: 120px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.cabin-selector:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.cabin-selector:hover {
+  border-color: #9ca3af;
+}
+
+/* Tabla con scrollbar */
+.cabin-history-table-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: white;
+}
+
+.cabin-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.cabin-history-table thead {
+  position: sticky;
+  top: 0;
+  background: #f9fafb;
+  z-index: 10;
+}
+
+.cabin-history-table th {
+  padding: 12px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 2px solid #e5e7eb;
+  white-space: nowrap;
+}
+
+.cabin-history-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #4b5563;
+}
+
+.cabin-history-table tbody tr:hover {
+  background-color: #f9fafb;
+}
+
+.cabin-history-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Scrollbar personalizado */
+.cabin-history-table-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cabin-history-table-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.cabin-history-table-container::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.cabin-history-table-container::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Estado badge */
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  min-width: 60px;
+}
+
+.status-badge.normal {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.status-badge.warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.status-badge.alert {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .cabin-history-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .cabin-selector-container {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .cabin-history-table-container {
+    max-height: 300px;
+  }
+  
+  .cabin-history-table th,
+  .cabin-history-table td {
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+}
+
+/* Indicador de carga */
+.loading-indicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  color: #6b7280;
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

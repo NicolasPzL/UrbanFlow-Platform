@@ -107,6 +107,29 @@ CREATE TABLE IF NOT EXISTS public.lineas
     CONSTRAINT lineas_nombre_key UNIQUE (nombre)
 );
 
+CREATE TABLE public.telemetria_cruda (
+    telemetria_id        bigserial PRIMARY KEY,
+    sensor_id            integer NOT NULL,
+    "timestamp"          timestamptz NOT NULL,
+    numero_cabina        integer,
+    codigo_cabina        varchar(50),
+    lat                  numeric(9,6),
+    lon                  numeric(9,6),
+    alt                  numeric(8,2),
+    velocidad_kmh        numeric(6,2),
+    aceleracion_m_s2     numeric(8,4),
+    temperatura_c        numeric(5,2),
+    vibracion_x          numeric(8,4),
+    vibracion_y          numeric(8,4),
+    vibracion_z          numeric(8,4),
+    direccion            numeric(6,2),
+    pos_m                numeric(10,2),
+    CONSTRAINT telemetria_cruda_sensor_fk
+        FOREIGN KEY (sensor_id)
+        REFERENCES public.sensores(sensor_id)
+        ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS public.mediciones
 (
     medicion_id bigserial NOT NULL,

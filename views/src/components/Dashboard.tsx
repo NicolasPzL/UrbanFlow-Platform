@@ -2,15 +2,43 @@ import React, { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
-import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, AreaChart, Area, ComposedChart } from "recharts";
+import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle, MapPin, Clock, Zap, BarChart3, Thermometer, Target, Navigation } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 type DashboardData = {
-  kpis?: { id: string; title: string; value: string; change: number; status: 'positive'|'negative'|'neutral' }[];
-  vibrationSeries?: { time: string; vibration: number; cabinId?: string }[];
+  kpis?: { 
+    id: string; 
+    title: string; 
+    value: string; 
+    change: number; 
+    status: 'positive'|'negative'|'neutral'|'warning';
+    description?: string;
+  }[];
+  vibrationSeries?: { 
+    time: string; 
+    timestamp: string;
+    vibration: number; 
+    kurtosis: number;
+    skewness: number;
+    pico: number;
+    crest_factor: number;
+    zcr: number;
+    frecuencia_media: number;
+    frecuencia_dominante: number;
+    amplitud_max_espectral: number;
+    energia_banda_1: number;
+    energia_banda_2: number;
+    energia_banda_3: number;
+    estado_procesado: string;
+    cabinId?: string;
+  }[];
   passengersSeries?: { hour: string; passengers: number }[];
   cabins?: any[];
   historicalData?: any[];
+  availableCabins?: any[];
+  user?: any;
+  timestamp?: string;
 };
 
 export function Dashboard() {
@@ -153,34 +181,63 @@ export function Dashboard() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard Operacional</h1>
-          <p className="text-gray-600 mt-2">
-            Monitoreo en tiempo real del sistema Urban Flow
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Dashboard Operacional</h1>
+              <p className="text-gray-600 mt-2">
+                Monitoreo en tiempo real del sistema Urban Flow
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-gray-500">Última actualización</div>
+              <div className="text-lg font-medium text-gray-900">
+                {data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'N/A'}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Debug Info - Temporal */}
-        <div className="mb-4 p-4 bg-blue-100 border border-blue-300 rounded">
-          <p className="text-sm text-blue-800">
-            Debug: Cabina seleccionada: {selectedCabin} | Datos de vibración: {vibrationChartData.length} puntos
-          </p>
+        {/* System Status */}
+        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <div>
+                <h3 className="text-sm font-medium text-green-800">Sistema Operativo</h3>
+                <p className="text-xs text-green-600">
+                  Microservicio de analítica conectado | {vibrationChartData.length} mediciones disponibles
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-green-600">Cabina seleccionada</div>
+              <div className="text-sm font-medium text-green-800">{selectedCabin}</div>
+            </div>
+          </div>
         </div>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {(data.kpis || []).map((kpi) => (
-            <Card key={kpi.id}>
+            <Card key={kpi.id} className={`${kpi.status === 'warning' ? 'border-yellow-200 bg-yellow-50' : ''}`}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{kpi.title}</CardTitle>
                 <div className="h-4 w-4 text-muted-foreground">
                   {kpi.id === 'kpi1' && <Activity />}
                   {kpi.id === 'kpi2' && <AlertTriangle />}
-                  {kpi.id === 'kpi3' && <Users />}
-                  {kpi.id === 'kpi4' && <Gauge />}
+                  {kpi.id === 'kpi3' && <Gauge />}
+                  {kpi.id === 'kpi4' && <MapPin />}
+                  {kpi.id === 'kpi5' && <BarChart3 />}
+                  {kpi.id === 'kpi6' && <Zap />}
+                  {kpi.id === 'kpi7' && <Target />}
+                  {kpi.id === 'kpi8' && <Navigation />}
                 </div>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{kpi.value}</div>
+                {kpi.description && (
+                  <p className="text-xs text-muted-foreground mt-1">{kpi.description}</p>
+                )}
                 <div className="flex items-center justify-between mt-2">
                   {formatChange(kpi.change)}
                   <span className="text-xs text-muted-foreground">vs período anterior</span>
@@ -190,77 +247,230 @@ export function Dashboard() {
           ))}
         </div>
 
-        {/* Charts Section */}
-        <div className="grid lg:grid-cols-2 gap-6 mb-8">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Vibración en Tiempo Real</CardTitle>
-                <div className="flex items-center space-x-2">
-                  <label htmlFor="cabin-select" className="text-sm font-medium text-gray-700">
-                    Cabina:
-                  </label>
-                  <select
-                    id="cabin-select"
-                    value={selectedCabin}
-                    onChange={(e) => setSelectedCabin(e.target.value)}
-                    className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    {(data.cabins || []).map((cabin: any) => (
-                      <option key={cabin.id} value={cabin.id}>
-                        {cabin.id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={vibrationChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" />
-                  <YAxis domain={[0, 3]} />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value} RMS`, 'Vibración']}
-                    labelFormatter={(label) => `${selectedCabin} - ${label}`}
-                  />
-                  <Line 
-                    type="monotone" 
-                    dataKey="vibration" 
-                    stroke="#3B82F6" 
-                    strokeWidth={2}
-                    dot={{ fill: '#3B82F6', strokeWidth: 2 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+        {/* Analytics Section */}
+        <div className="mb-8">
+          <Tabs defaultValue="vibration" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="vibration">Análisis Vibracional</TabsTrigger>
+              <TabsTrigger value="spectral">Análisis Espectral</TabsTrigger>
+              <TabsTrigger value="operational">Estados Operativos</TabsTrigger>
+              <TabsTrigger value="energy">Energía por Bandas</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="vibration" className="mt-6">
+              <div className="grid lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Vibración en Tiempo Real</CardTitle>
+                      <div className="flex items-center space-x-2">
+                        <label htmlFor="cabin-select" className="text-sm font-medium text-gray-700">
+                          Cabina:
+                        </label>
+                        <select
+                          id="cabin-select"
+                          value={selectedCabin}
+                          onChange={(e) => setSelectedCabin(e.target.value)}
+                          className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
+                          {(data.availableCabins || data.cabins || []).map((cabin: any) => (
+                            <option key={cabin.id || cabin.codigo} value={cabin.id || cabin.codigo}>
+                              {cabin.id || cabin.codigo}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={vibrationChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <YAxis domain={[0, 3]} />
+                        <Tooltip 
+                          formatter={(value: number) => [`${value} RMS`, 'Vibración']}
+                          labelFormatter={(label) => `${selectedCabin} - ${label}`}
+                        />
+                        <Line 
+                          type="monotone" 
+                          dataKey="vibration" 
+                          stroke="#3B82F6" 
+                          strokeWidth={2}
+                          dot={{ fill: '#3B82F6', strokeWidth: 2 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Flujo de Pasajeros por Hora</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={passengersChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="hour" />
-                  <YAxis />
-                  <Tooltip 
-                    formatter={(value: number) => [`${value}`, 'Pasajeros']}
-                  />
-                  <Bar dataKey="passengers" fill="#3B82F6" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Métricas de Vibración</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">RMS Promedio:</span>
+                          <span className="font-medium">{vibrationChartData.length > 0 ? (vibrationChartData.reduce((sum, d) => sum + d.vibration, 0) / vibrationChartData.length).toFixed(4) : '0.0000'} RMS</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Pico Máximo:</span>
+                          <span className="font-medium">{vibrationChartData.length > 0 ? Math.max(...vibrationChartData.map(d => d.pico || 0)).toFixed(4) : '0.0000'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Crest Factor:</span>
+                          <span className="font-medium">{vibrationChartData.length > 0 ? (vibrationChartData.reduce((sum, d) => sum + (d.crest_factor || 0), 0) / vibrationChartData.length).toFixed(2) : '0.00'}</span>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Kurtosis:</span>
+                          <span className="font-medium">{vibrationChartData.length > 0 ? (vibrationChartData.reduce((sum, d) => sum + (d.kurtosis || 0), 0) / vibrationChartData.length).toFixed(3) : '0.000'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">Skewness:</span>
+                          <span className="font-medium">{vibrationChartData.length > 0 ? (vibrationChartData.reduce((sum, d) => sum + (d.skewness || 0), 0) / vibrationChartData.length).toFixed(3) : '0.000'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm text-gray-600">ZCR:</span>
+                          <span className="font-medium">{vibrationChartData.length > 0 ? (vibrationChartData.reduce((sum, d) => sum + (d.zcr || 0), 0) / vibrationChartData.length).toFixed(3) : '0.000'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="spectral" className="mt-6">
+              <div className="grid lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Análisis de Frecuencias</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <ComposedChart data={vibrationChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="frecuencia_media" fill="#8884d8" stroke="#8884d8" />
+                        <Line type="monotone" dataKey="frecuencia_dominante" stroke="#82ca9d" strokeWidth={2} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Amplitud Espectral</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={vibrationChartData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="amplitud_max_espectral" fill="#ff7300" stroke="#ff7300" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="operational" className="mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Distribución de Estados Operativos</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={vibrationChartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="time" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="estado_procesado" fill="#8884d8" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="energy" className="mt-6">
+              <div className="grid lg:grid-cols-3 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Banda Baja (0-50 Hz)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={vibrationChartData}>
+                        <Area type="monotone" dataKey="energia_banda_1" fill="#8884d8" stroke="#8884d8" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Banda Media (50-200 Hz)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={vibrationChartData}>
+                        <Area type="monotone" dataKey="energia_banda_2" fill="#82ca9d" stroke="#82ca9d" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                      <CardTitle>Banda Alta (&gt;200 Hz)</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={vibrationChartData}>
+                        <Area type="monotone" dataKey="energia_banda_3" fill="#ffc658" stroke="#ffc658" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
         {/* Historical Data Table */}
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle>Historial de Cabinas</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Historial de Cabinas</CardTitle>
+              <div className="flex items-center space-x-2">
+                <label htmlFor="history-cabin-select" className="text-sm font-medium text-gray-700">
+                  Cabina:
+                </label>
+                <select
+                  id="history-cabin-select"
+                  value={selectedCabin}
+                  onChange={(e) => setSelectedCabin(e.target.value)}
+                  className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="all">Todas las cabinas</option>
+                  {(data.availableCabins || data.cabins || []).map((cabin: any) => (
+                    <option key={cabin.id || cabin.codigo} value={cabin.id || cabin.codigo}>
+                      {cabin.id || cabin.codigo}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="max-h-96 overflow-y-auto rounded border">
@@ -272,8 +482,8 @@ export function Dashboard() {
                   <TableHead>Posición</TableHead>
                   <TableHead>Velocidad</TableHead>
                   <TableHead>Vibración</TableHead>
-                  <TableHead>Pasajeros</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead>Estado Operativo</TableHead>
+                  <TableHead>Métricas</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -286,12 +496,17 @@ export function Dashboard() {
                     </TableCell>
                     <TableCell>{fmtNum(record.velocity)} {fmtNum(record.velocity) === '-' ? '' : 'm/s'}</TableCell>
                     <TableCell>{fmtRms(record.vibration)}</TableCell>
-                    <TableCell>{record.passengers}</TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(record.status)}>
-                        {record.status === 'normal' ? 'Normal' : 
-                         record.status === 'warning' ? 'Alerta' : 'Crítico'}
+                        {record.estado_procesado || record.status || 'Normal'}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-xs space-y-1">
+                        <div>Kurt: {fmtNum(record.kurtosis, 3)}</div>
+                        <div>Skew: {fmtNum(record.skewness, 3)}</div>
+                        <div>Pico: {fmtNum(record.pico, 3)}</div>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -307,27 +522,43 @@ export function Dashboard() {
             <CardTitle>Estado de Cabinas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {(data.cabins || []).map((cabin: any) => (
-                <Card key={cabin.id} className="relative">
+                <Card key={cabin.id} className={`relative ${cabin.status === 'warning' ? 'border-yellow-200' : cabin.status === 'alert' ? 'border-red-200' : ''}`}>
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">{cabin.id}</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="font-medium text-lg">{cabin.id}</span>
                       <div className={`w-3 h-3 rounded-full ${getStatusColor(cabin.status || 'unknown')}`}></div>
                     </div>
-                    <div className="space-y-1 text-sm text-gray-600">
-                      <div>Vel: {fmtNum(cabin.velocity)} {fmtNum(cabin.velocity) === '-' ? '' : 'm/s'}</div>
-                      <div>Vib: {fmtRms(cabin.vibrationLast)}</div>
-                      <div>Pax: {cabin.passengers ?? 0}</div>
-                      <div>Sensor: {cabin.sensor_id ? cabin.sensor_id : 'Sin sensor'}</div>
-                      <div>ETA: {cabin.eta}</div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Velocidad:</span>
+                        <span className="font-medium">{fmtNum(cabin.velocity)} {fmtNum(cabin.velocity) === '-' ? '' : 'm/s'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Vibración:</span>
+                        <span className="font-medium">{fmtRms(cabin.vibrationLast)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Estado:</span>
+                        <span className="font-medium">{cabin.statusProcessed || cabin.status || 'Normal'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Sensor:</span>
+                        <span className="font-medium">{cabin.sensor_id ? `#${cabin.sensor_id}` : 'Sin sensor'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Movimiento:</span>
+                        <span className="font-medium">{cabin.isMoving ? 'En movimiento' : 'Detenido'}</span>
+                      </div>
                     </div>
                     <Badge 
                       variant={getStatusVariant(cabin.status || 'default')} 
-                      className="mt-2 text-xs"
+                      className="mt-3 text-xs w-full justify-center"
                     >
                       {cabin.status === 'normal' ? 'Normal' : 
-                       cabin.status === 'warning' ? 'Alerta' : cabin.status === 'alert' ? 'Crítico' : '—'}
+                       cabin.status === 'warning' ? 'Alerta' : 
+                       cabin.status === 'alert' ? 'Crítico' : 'Desconocido'}
                     </Badge>
                   </CardContent>
                 </Card>

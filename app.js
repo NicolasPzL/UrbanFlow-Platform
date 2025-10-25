@@ -34,7 +34,7 @@ const app = express();
 // Configuración del puerto
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8080/api';
+const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8001/api';
 
 // Resolver __dirname en módulos ESM
 const __filename = fileURLToPath(import.meta.url);
