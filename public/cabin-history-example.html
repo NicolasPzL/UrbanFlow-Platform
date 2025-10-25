@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Historial de Cabinas - UrbanFlow</title>
+    <link rel="stylesheet" href="/css/cabin-history.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8fafc;
+            margin: 0;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="cabin-history-container">
+        <div class="cabin-history-header">
+            <h2 class="cabin-history-title">Historial de Cabinas</h2>
+            <div class="cabin-selector-container">
+                <label for="cabinSelector" class="cabin-selector-label">Cabina:</label>
+                <select id="cabinSelector" class="cabin-selector">
+                    <option value="all">Todas las cabinas</option>
+                    <option value="CAB-0001">CAB-0001 (operativa)</option>
+                </select>
+                <span id="recordCount" class="text-sm text-gray-500">0 registros</span>
+            </div>
+        </div>
+        
+        <div class="cabin-history-table-container">
+            <table id="cabinHistoryTable" class="cabin-history-table">
+                <thead>
+                    <tr>
+                        <th>ID Cabina</th>
+                        <th>Timestamp</th>
+                        <th>Posición</th>
+                        <th>Velocidad</th>
+                        <th>Vibración</th>
+                        <th>Pasajeros</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td colspan="7" class="loading-indicator">
+                            <div class="loading-spinner"></div>
+                            Cargando historial...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="/js/cabin-history.js"></script>
+    <script>
+        // Ejemplo de datos para testing
+        document.addEventListener('DOMContentLoaded', () => {
+            // Simular carga de datos
+            setTimeout(() => {
+                const tbody = document.querySelector('#cabinHistoryTable tbody');
+                if (tbody) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td class="font-medium">CAB-0001</td>
+                            <td>2025-10-21 04:55</td>
+                            <td>0.0, 0.0</td>
+                            <td>2.04 m/s</td>
+                            <td>0.7601 RMS</td>
+                            <td>-</td>
+                            <td><span class="status-badge normal">Normal</span></td>
+                        </tr>
+                        <tr>
+                            <td class="font-medium">CAB-0001</td>
+                            <td>2025-10-21 04:54</td>
+                            <td>0.0, 0.0</td>
+                            <td>4.08 m/s</td>
+                            <td>0.9336 RMS</td>
+                            <td>-</td>
+                            <td><span class="status-badge normal">Normal</span></td>
+                        </tr>
+                        <tr>
+                            <td class="font-medium">CAB-0001</td>
+                            <td>2025-10-21 04:53</td>
+                            <td>0.0, 0.0</td>
+                            <td>6.11 m/s</td>
+                            <td>1.5370 RMS</td>
+                            <td>-</td>
+                            <td><span class="status-badge normal">Normal</span></td>
+                        </tr>
+                    `;
+                }
+                document.getElementById('recordCount').textContent = '3 registros';
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
