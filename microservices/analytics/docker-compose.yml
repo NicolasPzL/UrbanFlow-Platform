@@ -4,20 +4,28 @@ services:
   analytics:
     build: .
     ports:
-      - "8080:8080"
+      - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/urbanflow_db
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=urbanflow_db
+      - DB_PORT=5432
       - DEBUG=false
       - LOG_LEVEL=INFO
+      - ML_CONTAMINATION=0.1
+      - ML_RANDOM_STATE=42
     depends_on:
       - db
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - analytics_network
 
   db:
     image: postgres:15-alpine
@@ -29,8 +37,13 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
+    networks:
+      - analytics_network
+
+networks:
+  analytics_network:
+    driver: bridge
 
 volumes:
   postgres_data:
