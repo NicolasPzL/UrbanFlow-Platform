@@ -28,6 +28,7 @@ const CabinMarker = ({ cabin }: { cabin: CabinData }) => {
     switch (status) {
       case 'warning': return 'bg-yellow-500';
       case 'alert': return 'bg-red-500';
+      case 'reaceleracion': return 'bg-orange-500';
       case 'normal': default: return 'bg-green-500';
     }
   };
@@ -184,7 +185,9 @@ const GeoportalMap = ({
                       (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
                        popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'normal' ? 'bg-green-500' : 
                       (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'warning' ? 'bg-yellow-500' : 'bg-red-500'
+                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'warning' ? 'bg-yellow-500' : 
+                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
+                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'reaceleracion' ? 'bg-orange-500' : 'bg-red-500'
                     }`}></div>
                     <span className="capitalize">{popupInfo.estado_actual}</span>
                   </div>

@@ -120,6 +120,7 @@ export function Dashboard() {
       case 'normal': return 'bg-green-500';
       case 'warning': return 'bg-yellow-500';
       case 'alert': return 'bg-red-500';
+      case 'reaceleracion': return 'bg-orange-500';
       default: return 'bg-gray-500';
     }
   };
@@ -129,6 +130,7 @@ export function Dashboard() {
       case 'normal': return 'default';
       case 'warning': return 'secondary';
       case 'alert': return 'destructive';
+      case 'reaceleracion': return 'secondary';
       default: return 'outline';
     }
   };

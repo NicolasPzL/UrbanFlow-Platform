@@ -35,9 +35,11 @@ class TelemetryProcessorSimple:
             processed_count = 0
             processed_data = []
             
-            # Variables para cálculo de distancia acumulada
+            # Variables para cálculo de distancia acumulada y contexto histórico
             last_lat, last_lon = None, None
             distancia_acumulada_m = 0.0
+            previous_state = None
+            velocity_history = []
             
             for i, row in enumerate(raw_data):
                 try:
@@ -52,11 +54,18 @@ class TelemetryProcessorSimple:
                         distancia_m = 0.0  # Primera fila
                         distancia_acumulada_m = 0.0
                     
-                    # Calcular métricas para esta fila con distancia acumulada
-                    metrics = self._process_single_row(row, distancia_acumulada_m)
+                    # Calcular métricas para esta fila con distancia acumulada y contexto histórico
+                    metrics = self._process_single_row(row, distancia_acumulada_m, previous_state, velocity_history)
                     
                     if metrics:
                         processed_data.append(metrics)
+                        # Actualizar contexto histórico para siguiente iteración
+                        previous_state = metrics.get('estado_procesado')
+                        current_velocity_kmh = float(row.velocidad_kmh) if row.velocidad_kmh is not None else 0.0
+                        velocity_history.append(current_velocity_kmh)
+                        # Mantener solo los últimos 5 valores para eficiencia
+                        if len(velocity_history) > 5:
+                            velocity_history.pop(0)
                     
                     # Actualizar coordenadas para siguiente iteración
                     last_lat, last_lon = current_lat, current_lon
@@ -113,7 +122,7 @@ class TelemetryProcessorSimple:
             print(f"Error obteniendo datos no procesados: {e}")
             return []
     
-    def _process_single_row(self, row, distancia_acumulada_m):
+    def _process_single_row(self, row, distancia_acumulada_m, previous_state=None, velocity_history=None):
         """Procesa una sola fila de telemetría cruda"""
         try:
             # Datos básicos
@@ -128,8 +137,8 @@ class TelemetryProcessorSimple:
             # Calcular métricas vibracionales
             vib_metrics = self._calculate_vibration_metrics(row)
             
-            # Determinar estado operativo usando distancia acumulada
-            estado_procesado = self._determine_operational_state(velocidad_kmh, distancia_acumulada_m)
+            # Determinar estado operativo usando distancia acumulada y contexto histórico
+            estado_procesado = self._determine_operational_state(velocidad_kmh, distancia_acumulada_m, previous_state, velocity_history)
             
             return {
                 'sensor_id': sensor_id,
@@ -209,39 +218,68 @@ class TelemetryProcessorSimple:
                 'energia_banda_1': 0.0, 'energia_banda_2': 0.0, 'energia_banda_3': 0.0
             }
     
-    def _determine_operational_state(self, velocidad_kmh, distancia_acumulada_m):
-        """Determina el estado operativo basado en velocidad y distancia acumulada"""
+    def _determine_operational_state(self, velocidad_kmh, distancia_acumulada_m, previous_state=None, velocity_history=None):
+        """Determina el estado operativo basado en velocidad, distancia acumulada y contexto histórico"""
         try:
             # Longitud total de la ruta (aproximadamente 18.2 km)
             RUTA_TOTAL_M = 18200
             
             # Reglas de clasificación según especificaciones
             if velocidad_kmh < 1.0:
-                return "Parado"
+                return "parado"
             elif velocidad_kmh < 5.0:
                 # Zona lenta: ~5 km/h durante ~40 m
-                if distancia_acumulada_m > 0 and distancia_acumulada_m < 50:
-                    return "Zona lenta"
-                else:
-                    return "Zona lenta"
+                return "zona_lenta"
             elif velocidad_kmh < 15.0 and distancia_acumulada_m < 1000:
                 # Inicio: desde 0 m hasta alcanzar ~25 km/h
-                return "Inicio"
+                return "inicio"
             elif 24.0 <= velocidad_kmh <= 26.0 and 1000 <= distancia_acumulada_m <= RUTA_TOTAL_M - 450:
                 # Crucero: se mantiene constante en ~25 km/h
-                return "Crucero"
+                return "crucero"
             elif velocidad_kmh > 15.0 and distancia_acumulada_m >= RUTA_TOTAL_M - 450:
                 # Frenado: empieza aprox. a 450 m antes del final
-                return "Frenado"
-            elif velocidad_kmh > 26.0:
-                # Reaceleración: después de la zona lenta
-                return "Reaceleración"
+                return "frenado"
+            elif self._is_reacceleration_phase(velocidad_kmh, previous_state, velocity_history):
+                # Reaceleración: después de la zona lenta, velocidad subiendo sostenidamente
+                return "reaceleracion"
             else:
-                return "Transición"
+                return "transicion"
                 
         except Exception as e:
             print(f"Error determinando estado operativo: {e}")
-            return "Desconocido"
+            return "desconocido"
+    
+    def _is_reacceleration_phase(self, velocidad_kmh, previous_state, velocity_history):
+        """Detecta si estamos en fase de reaceleración"""
+        try:
+            # Condiciones para detectar reaceleración:
+            # 1. Velocidad actual entre 6-24 km/h (subiendo desde zona lenta hacia crucero)
+            # 2. Estado anterior fue zona_lenta o velocidad venía de rango bajo
+            # 3. Tendencia de velocidad positiva (opcional, si tenemos historial)
+            
+            if not (6.0 <= velocidad_kmh < 24.0):
+                return False
+            
+            # Si tenemos estado anterior, verificar que venía de zona lenta
+            if previous_state and previous_state in ["zona_lenta", "parado"]:
+                return True
+            
+            # Si tenemos historial de velocidad, verificar tendencia positiva
+            if velocity_history and len(velocity_history) >= 3:
+                recent_velocities = velocity_history[-3:]
+                if all(recent_velocities[i] < recent_velocities[i+1] for i in range(len(recent_velocities)-1)):
+                    return True
+            
+            # Detectar por velocidad: si venía de rango bajo (4-6 km/h) y ahora está subiendo
+            if velocity_history and len(velocity_history) >= 2:
+                if velocity_history[-2] <= 6.0 and velocidad_kmh > velocity_history[-2]:
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"Error detectando fase de reaceleración: {e}")
+            return False
     
     def _haversine_distance(self, lat1, lon1, lat2, lon2):
         """Calcula la distancia Haversine entre dos puntos en metros"""
@@ -494,7 +532,7 @@ class TelemetryProcessorSimple:
                     'velocidad_promedio_kmh': 0.0,
                     'temperatura_promedio_c': 0.0,
                     'rms_promedio': 0.0,
-                    'estados_distribucion': {},
+                    'distribucion_estados': {},
                     'estado_cabina_actual': 'desconocido'
                 }
             
@@ -509,7 +547,7 @@ class TelemetryProcessorSimple:
             
             result = self.db.execute(query).fetchone()
             
-            # Obtener distribución de estados
+            # Obtener distribución de estados con porcentajes
             estados_query = text("""
                 SELECT 
                     estado_procesado,
@@ -521,8 +559,21 @@ class TelemetryProcessorSimple:
             
             estados_result = self.db.execute(estados_query)
             estados_distribucion = {}
+            total_estados = 0
+            
+            # Primero contar total para calcular porcentajes
             for row in estados_result:
                 estados_distribucion[row.estado_procesado] = row.count
+                total_estados += row.count
+            
+            # Convertir a formato con porcentajes
+            estados_con_porcentajes = {}
+            for estado, count in estados_distribucion.items():
+                porcentaje = (count / total_estados * 100) if total_estados > 0 else 0
+                estados_con_porcentajes[estado] = {
+                    "count": count,
+                    "percentage": round(porcentaje, 1)
+                }
             
             # Obtener estado actual de la cabina
             cabina_query = text("""
@@ -543,7 +594,7 @@ class TelemetryProcessorSimple:
                 'velocidad_promedio_kmh': float(result.velocidad_promedio_kmh) if result.velocidad_promedio_kmh else 0.0,
                 'temperatura_promedio_c': 0.0,  # No disponible en mediciones
                 'rms_promedio': float(result.rms_promedio) if result.rms_promedio else 0.0,
-                'estados_distribucion': estados_distribucion,
+                'distribucion_estados': estados_con_porcentajes,
                 'estado_cabina_actual': estado_cabina
             }
             
@@ -555,6 +606,6 @@ class TelemetryProcessorSimple:
                 'velocidad_promedio_kmh': 0.0,
                 'temperatura_promedio_c': 0.0,
                 'rms_promedio': 0.0,
-                'estados_distribucion': {},
+                'distribucion_estados': {},
                 'estado_cabina_actual': 'desconocido'
             }

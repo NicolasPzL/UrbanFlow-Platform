@@ -41,9 +41,9 @@ const buildKPIs = (summary, systemHealth, recent) => {
     : 0;
   
   // Distribución de estados operativos
-  const estadosDistribucion = summary?.estados_distribucion || {};
+  const estadosDistribucion = summary?.distribucion_estados || {};
   const estadoMasComun = Object.keys(estadosDistribucion).reduce((a, b) => 
-    estadosDistribucion[a] > estadosDistribucion[b] ? a : b, 'desconocido'
+    estadosDistribucion[a]?.count > estadosDistribucion[b]?.count ? a : b, 'desconocido'
   );
   
   return [
