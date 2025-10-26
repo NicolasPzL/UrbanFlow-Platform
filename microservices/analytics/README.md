@@ -78,7 +78,7 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 
 # Ejecutar servicio
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8081
 ```
 
 ### Docker
@@ -92,6 +92,25 @@ docker run -p 8080:8080 \
   -e DATABASE_URL="postgresql+psycopg2://user:pass@host:port/db" \
   urbanflow-analytics
 ```
+
+## Estados Operativos
+
+El sistema clasifica automáticamente cada medición en uno de los siguientes estados operativos:
+
+### Estados Principales
+1. **inicio**: Velocidad < 15 km/h, distancia < 1000m (fase de arranque)
+2. **crucero**: Velocidad 24-26 km/h, distancia 1000m - (total-450m) (velocidad constante)
+3. **frenado**: Velocidad > 15 km/h, distancia > (total-450m) (aproximación a estación)
+4. **zona_lenta**: Velocidad < 5 km/h (reducción de velocidad)
+5. **reaceleracion**: Velocidad 6-24 km/h, después de zona_lenta (incremento controlado de velocidad)
+6. **parado**: Velocidad < 1 km/h (estado de detención)
+
+### Detección de Reaceleración
+La fase de **reaceleracion** se detecta cuando:
+- Velocidad actual entre 6-24 km/h
+- Estado anterior fue "zona_lenta" o velocidad venía de rango bajo (4-6 km/h)
+- Tendencia de velocidad positiva sostenida
+- No se ha alcanzado aún la velocidad de crucero estable
 
 ## Algoritmos ML
 
