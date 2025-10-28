@@ -43,6 +43,13 @@ class AnalyticsService:
         avg_crest_factor = self.db.query(func.avg(m.Medicion.crest_factor)).scalar()
         max_pico = self.db.query(func.max(m.Medicion.pico)).scalar()
         
+        # Convertir Decimal a float para evitar errores de tipo
+        avg_velocity = float(avg_velocity) if avg_velocity is not None else None
+        avg_rms = float(avg_rms) if avg_rms is not None else None
+        avg_kurtosis = float(avg_kurtosis) if avg_kurtosis is not None else None
+        avg_crest_factor = float(avg_crest_factor) if avg_crest_factor is not None else None
+        max_pico = float(max_pico) if max_pico is not None else None
+        
         # Distribución de estados operativos
         states_query = self.db.query(
             m.Medicion.estado_procesado,
@@ -60,28 +67,31 @@ class AnalyticsService:
             "class_distribution": classes,
             "states_distribution": states_distribution,
             "distribucion_estados": states_distribution,  # Alias para compatibilidad
-            "avg_rms": float(avg_rms) if avg_rms else 0.0,
-            "rms_promedio": float(avg_rms) if avg_rms else 0.0,  # Alias para compatibilidad
-            "average_velocity_ms": float(avg_velocity) if avg_velocity else 0.0,
-            "average_velocity_kmh": float(avg_velocity * 3.6) if avg_velocity else 0.0,
-            "velocidad_promedio_kmh": float(avg_velocity * 3.6) if avg_velocity else 0.0,  # Alias para compatibilidad
-            "avg_kurtosis": float(avg_kurtosis) if avg_kurtosis else 0.0,
-            "avg_crest_factor": float(avg_crest_factor) if avg_crest_factor else 0.0,
-            "max_pico": float(max_pico) if max_pico else 0.0,
-            "distancia_total_km": float(avg_velocity * 3.6 * 0.5) if avg_velocity else 0.0,  # Estimación conservadora
+            "avg_rms": avg_rms if avg_rms is not None else 0.0,
+            "rms_promedio": avg_rms if avg_rms is not None else 0.0,  # Alias para compatibilidad
+            "average_velocity_ms": avg_velocity if avg_velocity is not None else 0.0,
+            "average_velocity_kmh": (avg_velocity * 3.6) if avg_velocity is not None else 0.0,
+            "velocidad_promedio_kmh": (avg_velocity * 3.6) if avg_velocity is not None else 0.0,  # Alias para compatibilidad
+            "avg_kurtosis": avg_kurtosis if avg_kurtosis is not None else 0.0,
+            "avg_crest_factor": avg_crest_factor if avg_crest_factor is not None else 0.0,
+            "max_pico": max_pico if max_pico is not None else 0.0,
+            "distancia_total_km": (avg_velocity * 3.6 * 0.5) if avg_velocity is not None else 0.0,  # Estimación conservadora
         }
     
     def get_system_health(self):
         """Análisis de salud del sistema completo"""
-        # Obtener datos de los últimos 7 días
-        cutoff_date = datetime.utcnow() - timedelta(days=7)
+        # Obtener datos de los últimos 30 días (más flexible para datos históricos)
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
         
         recent_measurements = self.db.query(m.Medicion).filter(
             m.Medicion.timestamp >= cutoff_date
         ).all()
         
+        # Si no hay datos recientes, intentar con todos los datos disponibles
         if not recent_measurements:
-            return {"status": "no_data", "message": "No hay datos recientes"}
+            recent_measurements = self.db.query(m.Medicion).limit(1000).all()
+            if not recent_measurements:
+                return {"status": "no_data", "message": "No hay datos disponibles"}
         
         # Análisis de RMS
         rms_values = [float(med.rms) if med.rms is not None else 0.0 for med in recent_measurements]

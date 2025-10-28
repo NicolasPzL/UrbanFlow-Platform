@@ -2,7 +2,7 @@
 import { asyncHandler } from '../middlewares/asyncHandler.js';
 
 // Datos desde microservicio (reemplaza mocks)
-const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8080/api';
+const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8001/api';
 
 const fetchJSON = async (url) => {
   const r = await fetch(url);

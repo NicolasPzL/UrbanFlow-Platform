@@ -207,14 +207,14 @@ $env:ANALYTICS_DATABASE_URL="postgresql+psycopg2://postgres:postgres@127.0.0.1:5
 
 #### 7.5 Ejecutar FastAPI (Uvicorn)
 ```
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
-- Salud: `http://localhost:8080/health`
+- Salud: `http://localhost:8001/health`
 
 #### 7.6 Integración con backend (proxy)
-- En el `.env` del backend Node (raíz) define:
+- En el `.env` del backend Node (raíz) define (opcional, por defecto usa 8001):
 ```
-ANALYTICS_BASE_URL=http://localhost:8080/api
+ANALYTICS_BASE_URL=http://localhost:8001/api
 ```
 - Reinicia el backend: `npm run dev`
 - Endpoints desde el front/back:

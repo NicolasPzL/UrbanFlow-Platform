@@ -53,6 +53,24 @@ const GeoportalMap = ({
   const [mapError, setMapError] = useState<string | null>(null);
   const mapboxToken = (import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN || '';
 
+  // Helper function para obtener el status de una cabina
+  const getCabinStatus = (cabin: CabinData): string => {
+    if (cabin.status) return cabin.status;
+    if (cabin.estado_actual === 'operativo') return 'normal';
+    if (cabin.estado_actual === 'inusual') return 'warning';
+    return 'alert';
+  };
+
+  // Helper function para obtener el color de status
+  const getStatusColorClass = (status: string): string => {
+    switch (status) {
+      case 'normal': return 'bg-green-500';
+      case 'warning': return 'bg-yellow-500';
+      case 'reaceleracion': return 'bg-orange-500';
+      case 'alert': default: return 'bg-red-500';
+    }
+  };
+
   // Verificar que el token de Mapbox esté configurado
   useEffect(() => {
     if (!mapboxToken) {
@@ -181,14 +199,7 @@ const GeoportalMap = ({
                 <>
                   <h4 className="font-bold text-gray-800">Cabina: {popupInfo.codigo_interno}</h4>
                   <div className="flex items-center space-x-2 mt-1">
-                    <div className={`w-3 h-3 rounded-full ${
-                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'normal' ? 'bg-green-500' : 
-                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'warning' ? 'bg-yellow-500' : 
-                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'reaceleracion' ? 'bg-orange-500' : 'bg-red-500'
-                    }`}></div>
+                    <div className={`w-3 h-3 rounded-full ${getStatusColorClass(getCabinStatus(popupInfo))}`}></div>
                     <span className="capitalize">{popupInfo.estado_actual}</span>
                   </div>
                   <div className="flex items-center space-x-2 mt-1 text-gray-600">
