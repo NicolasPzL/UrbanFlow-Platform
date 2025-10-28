@@ -34,6 +34,7 @@ const app = express();
 // Configuración del puerto
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
+const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8080/api';
 
 // Resolver __dirname en módulos ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -167,6 +168,57 @@ app.use('/api/citizen', requireAuth, requireRole('cliente'), citizenRoutes);
 
 // Dashboard principal para staff (excluye cliente)
 app.use('/api/dashboard', requireAuth, requireRole('admin','operador','analista'), dashboardRoutes);
+
+// -----------------------------------------------------------------------------
+// Proxy hacia Microservicio de Analytics (FastAPI) usando fetch nativo
+// -----------------------------------------------------------------------------
+
+async function proxyToAnalytics(req, res, upstreamPath) {
+  try {
+    const url = `${ANALYTICS_BASE_URL}${upstreamPath}`;
+    const method = req.method.toUpperCase();
+
+    // Construir opciones de fetch
+    const headers = { 'Content-Type': 'application/json' };
+    // Reenviar querystring
+    const qs = new URLSearchParams(req.query || {}).toString();
+    const target = qs ? `${url}?${qs}` : url;
+
+    const body = method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(req.body || {});
+
+    const resp = await fetch(target, { method, headers, body });
+    const contentType = resp.headers.get('content-type') || '';
+    res.status(resp.status);
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.json(data);
+    }
+    const text = await resp.text();
+    return res.send(text);
+  } catch (e) {
+    console.error('Proxy analytics error:', e);
+    return res.status(502).json({ ok: false, error: 'UPSTREAM_ERROR', detail: e?.message || 'proxy error' });
+  }
+}
+
+// Staff: admin, operador, analista
+app.use('/api/analytics', requireAuth, requireRole('admin','operador','analista'), (req, res) => {
+  return proxyToAnalytics(req, res, `/analytics${req.path}`);
+});
+app.use('/api/data', requireAuth, requireRole('admin','operador','analista'), (req, res) => {
+  return proxyToAnalytics(req, res, `/data${req.path}`);
+});
+app.use('/api/models', requireAuth, requireRole('admin','operador','analista'), (req, res) => {
+  return proxyToAnalytics(req, res, `/models${req.path}`);
+});
+app.use('/api/predictions', requireAuth, requireRole('admin','operador','analista'), (req, res) => {
+  return proxyToAnalytics(req, res, `/predictions${req.path}`);
+});
+
+// Cliente: rutas ciudadanas simplificadas hacia analytics
+app.use('/api/citizen/analytics', requireAuth, requireRole('cliente'), (req, res) => {
+  return proxyToAnalytics(req, res, `/analytics${req.path}`);
+});
 
 // =============================================================================
 // SERVIR FRONTEND (BUILD VITE) Y FALLBACK SPA

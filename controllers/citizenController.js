@@ -1,69 +1,51 @@
 // controllers/citizenController.js
 import { asyncHandler } from '../middlewares/asyncHandler.js';
 
-// Datos mock para el dashboard ciudadano
-const mockCabins = [
-  {
-    id: 'CB001',
-    position: { x: 25, y: 75 },
-    velocity: 4.2,
-    passengers: 12,
-    eta: '14:32',
-    vibrationLast: 0.8,
-    vibrationAvg: 0.7,
-    status: 'normal',
-    statusProcessed: 'En funcionamiento normal',
-    isMoving: true
-  },
-  {
-    id: 'CB002',
-    position: { x: 42, y: 58 },
-    velocity: 3.8,
-    passengers: 8,
-    eta: '14:35',
-    vibrationLast: 1.2,
-    vibrationAvg: 1.1,
-    status: 'warning',
-    statusProcessed: 'Vibración ligeramente elevada',
-    isMoving: true
-  },
-  {
-    id: 'CB003',
-    position: { x: 58, y: 42 },
-    velocity: 0,
-    passengers: 15,
-    eta: '14:40',
-    vibrationLast: 2.1,
-    vibrationAvg: 1.8,
-    status: 'alert',
-    statusProcessed: 'Detenida por mantenimiento',
-    isMoving: false
-  },
-  {
-    id: 'CB004',
-    position: { x: 72, y: 28 },
-    velocity: 4.5,
-    passengers: 6,
-    eta: '14:38',
-    vibrationLast: 0.6,
-    vibrationAvg: 0.65,
-    status: 'normal',
-    statusProcessed: 'En funcionamiento normal',
-    isMoving: true
-  },
-  {
-    id: 'CB005',
-    position: { x: 30, y: 70 },
-    velocity: 4.1,
-    passengers: 10,
-    eta: '14:36',
-    vibrationLast: 0.9,
-    vibrationAvg: 0.85,
-    status: 'normal',
-    statusProcessed: 'En funcionamiento normal',
-    isMoving: true
-  }
-];
+// Datos desde microservicio (reemplaza mocks)
+const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8080/api';
+
+const fetchJSON = async (url) => {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Request failed ${r.status} ${url}`);
+  return r.json();
+};
+
+const mapHealthToStatus = (s) => {
+  const v = (s || '').toString().toLowerCase();
+  if (v.includes('critical') || v.includes('alert')) return 'disruption';
+  if (v.includes('warn')) return 'maintenance';
+  return 'operational';
+};
+
+const buildCitizenCabins = (sensorsStatus, recent) => {
+  const lastBySensor = new Map();
+  (recent || []).forEach((m) => {
+    const sid = m.sensor_id ?? m.sensorId;
+    if (!sid) return;
+    const prev = lastBySensor.get(sid);
+    if (!prev || new Date(m.timestamp) > new Date(prev.timestamp)) {
+      lastBySensor.set(sid, m);
+    }
+  });
+
+  return (sensorsStatus || []).map((s) => {
+    const sid = s.sensor_id;
+    const last = lastBySensor.get(sid) || {};
+    const id = s.cabina_id || `SENSOR-${sid}`;
+    return {
+      id,
+      position: { x: 0, y: 0 },
+      velocity: Number(last.velocidad) || 0,
+      passengers: 0,
+      eta: '-',
+      vibrationLast: Number(last.rms) || 0,
+      vibrationAvg: Number(last.rms) || 0,
+      status: (s.health?.system_status || s.health?.status || 'normal').toLowerCase().includes('critical') ? 'alert' : ((s.health?.system_status || s.health?.status || '').toLowerCase().includes('warn') ? 'warning' : 'normal'),
+      statusProcessed: s.health?.system_status || s.health?.status || 'normal',
+      isMoving: (Number(last.velocidad) || 0) > 0,
+    };
+  });
+};
 
 const mockStations = [
   { id: 'ST001', name: 'A1', position: { x: 20, y: 80 }, type: 'terminal' },
@@ -74,24 +56,16 @@ const mockStations = [
 ];
 
 // Función para calcular métricas ciudadanas
-const calculateCitizenMetrics = () => {
-  const cabins = mockCabins;
-  
-  // Pasajeros activos (total de pasajeros en todas las cabinas)
-  const activePassengers = cabins.reduce((sum, cabin) => sum + cabin.passengers, 0);
-  
-  // Tiempo de espera promedio (simulado basado en estado de cabinas)
-  const movingCabins = cabins.filter(cabin => cabin.isMoving).length;
+const calculateCitizenMetrics = (cabins) => {
   const totalCabins = cabins.length;
-  const waitTime = totalCabins > 0 ? (totalCabins - movingCabins) * 2 + Math.random() * 2 : 2;
-  
-  // Eficiencia del servicio (basado en cabinas operativas)
   const operationalCabins = cabins.filter(cabin => cabin.status === 'normal').length;
   const efficiency = totalCabins > 0 ? (operationalCabins / totalCabins) * 100 : 100;
-  
+  const movingCabins = cabins.filter(cabin => cabin.isMoving).length;
+  const waitTime = totalCabins > 0 ? (totalCabins - movingCabins) * 2 : 2;
+  const activePassengers = 0;
   return {
     activePassengers,
-    waitTime: Math.round(waitTime * 10) / 10, // Redondear a 1 decimal
+    waitTime: Math.round(waitTime * 10) / 10,
     efficiency: Math.round(efficiency)
   };
 };
@@ -151,27 +125,28 @@ const getRouteInfo = () => {
   };
 };
 
-// Función para determinar el estado del sistema
-const getSystemStatus = () => {
-  const cabins = mockCabins;
-  const alertCabins = cabins.filter(cabin => cabin.status === 'alert').length;
-  const warningCabins = cabins.filter(cabin => cabin.status === 'warning').length;
-  
-  if (alertCabins > 0) {
-    return 'disruption';
-  } else if (warningCabins > 1) {
-    return 'maintenance';
-  } else {
-    return 'operational';
-  }
-};
+// Función para determinar el estado del sistema desde microservicio
+const mapSystemStatus = (system_status) => mapHealthToStatus(system_status);
 
 export const getCitizenDashboard = asyncHandler(async (req, res) => {
-  const metrics = calculateCitizenMetrics();
+  const base = (process.env.ANALYTICS_BASE_URL || ANALYTICS_BASE_URL).replace(/\/$/, '');
+  const [healthResp, sensorsResp, recentResp, summaryResp] = await Promise.all([
+    fetchJSON(`${base}/analytics/system-health`),
+    fetchJSON(`${base}/analytics/sensors/status`),
+    fetchJSON(`${base}/data/measurements/recent?limit=500`),
+    fetchJSON(`${base}/analytics/summary`),
+  ]);
+
+  const systemHealth = healthResp?.data || {};
+  const sensors = sensorsResp?.data?.sensors || [];
+  const recent = recentResp?.data?.measurements || [];
+
+  const cabins = buildCitizenCabins(sensors, recent);
+  const metrics = calculateCitizenMetrics(cabins);
+  const systemStatus = mapSystemStatus(systemHealth?.system_status || systemHealth?.status || 'healthy');
   const serviceUpdates = getServiceUpdates();
   const routeInfo = getRouteInfo();
-  const systemStatus = getSystemStatus();
-  
+
   res.json({
     ok: true,
     data: {
@@ -180,7 +155,7 @@ export const getCitizenDashboard = asyncHandler(async (req, res) => {
       routeInfo,
       systemStatus,
       stations: mockStations,
-      cabins: mockCabins,
+      cabins,
       timestamp: new Date().toISOString(),
     },
   });
