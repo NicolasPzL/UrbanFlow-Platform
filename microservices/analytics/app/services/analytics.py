@@ -35,13 +35,40 @@ class AnalyticsService:
             .all()
         )
         classes = {c: n for c, n in by_class}
+        
+        # Calcular métricas adicionales de mediciones
+        avg_rms = self.db.query(func.avg(m.Medicion.rms)).scalar()
+        avg_velocity = self.db.query(func.avg(m.Medicion.velocidad)).scalar()
+        avg_kurtosis = self.db.query(func.avg(m.Medicion.kurtosis)).scalar()
+        avg_crest_factor = self.db.query(func.avg(m.Medicion.crest_factor)).scalar()
+        max_pico = self.db.query(func.max(m.Medicion.pico)).scalar()
+        
+        # Distribución de estados operativos
+        states_query = self.db.query(
+            m.Medicion.estado_procesado,
+            func.count(m.Medicion.medicion_id)
+        ).group_by(m.Medicion.estado_procesado).all()
+        
+        states_distribution = {state: count for state, count in states_query}
 
         return {
             "total_measurements": int(total_med),
+            "total_mediciones": int(total_med),  # Alias para compatibilidad
             "total_predictions": int(total_pred),
             "total_sensors": int(total_sensors),
             "latest_prediction_at": latest_ts.isoformat() if latest_ts else None,
             "class_distribution": classes,
+            "states_distribution": states_distribution,
+            "distribucion_estados": states_distribution,  # Alias para compatibilidad
+            "avg_rms": float(avg_rms) if avg_rms else 0.0,
+            "rms_promedio": float(avg_rms) if avg_rms else 0.0,  # Alias para compatibilidad
+            "average_velocity_ms": float(avg_velocity) if avg_velocity else 0.0,
+            "average_velocity_kmh": float(avg_velocity * 3.6) if avg_velocity else 0.0,
+            "velocidad_promedio_kmh": float(avg_velocity * 3.6) if avg_velocity else 0.0,  # Alias para compatibilidad
+            "avg_kurtosis": float(avg_kurtosis) if avg_kurtosis else 0.0,
+            "avg_crest_factor": float(avg_crest_factor) if avg_crest_factor else 0.0,
+            "max_pico": float(max_pico) if max_pico else 0.0,
+            "distancia_total_km": float(avg_velocity * 3.6 * 0.5) if avg_velocity else 0.0,  # Estimación conservadora
         }
     
     def get_system_health(self):
