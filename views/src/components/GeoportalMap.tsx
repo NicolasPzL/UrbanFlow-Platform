@@ -20,10 +20,11 @@ type GeoportalMapProps = {
   stations: StationData[];
   className?: string;
   isPublic?: boolean;
+  showSensitiveInfo?: boolean; // Controla si se muestran estados de cabinas y otra info sensible
 };
 
 // --- Sub-componente para el marcador de la cabina ---
-const CabinMarker = ({ cabin }: { cabin: CabinData }) => {
+const CabinMarker = ({ cabin, showStatus = true }: { cabin: CabinData; showStatus?: boolean }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'warning': return 'bg-yellow-500';
@@ -32,6 +33,12 @@ const CabinMarker = ({ cabin }: { cabin: CabinData }) => {
       case 'normal': default: return 'bg-green-500';
     }
   };
+  
+  // Si no debe mostrar estado sensible, usar color neutral
+  if (!showStatus) {
+    return <div className="w-4 h-4 rounded-full bg-blue-500 border-2 border-white shadow-md cursor-pointer transform hover:scale-125 transition-transform"></div>;
+  }
+  
   // Use mapped status if available, otherwise map from estado_actual
   const status = cabin.status || (cabin.estado_actual === 'operativo' ? 'normal' : 
                                   cabin.estado_actual === 'inusual' ? 'warning' : 'alert');
@@ -47,11 +54,30 @@ const GeoportalMap = ({
   stations = [], 
   className = '',
   width = '100%',
-  height = '100%'
+  height = '100%',
+  showSensitiveInfo = true
 }: GeoportalMapProps & { width?: string | number, height?: string | number }) => {
   const [popupInfo, setPopupInfo] = useState<CabinData | StationData | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapboxToken = (import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN || '';
+
+  // Helper function para obtener el status de una cabina
+  const getCabinStatus = (cabin: CabinData): string => {
+    if (cabin.status) return cabin.status;
+    if (cabin.estado_actual === 'operativo') return 'normal';
+    if (cabin.estado_actual === 'inusual') return 'warning';
+    return 'alert';
+  };
+
+  // Helper function para obtener el color de status
+  const getStatusColorClass = (status: string): string => {
+    switch (status) {
+      case 'normal': return 'bg-green-500';
+      case 'warning': return 'bg-yellow-500';
+      case 'reaceleracion': return 'bg-orange-500';
+      case 'alert': default: return 'bg-red-500';
+    }
+  };
 
   // Verificar que el token de Mapbox esté configurado
   useEffect(() => {
@@ -76,10 +102,10 @@ const GeoportalMap = ({
     cabins.map((cabin) => (
       <Marker key={`cabin-${cabin.cabina_id}`} longitude={cabin.longitud} latitude={cabin.latitud}>
         <div onMouseEnter={() => setPopupInfo(cabin)} onMouseLeave={() => setPopupInfo(null)}>
-          <CabinMarker cabin={cabin} />
+          <CabinMarker cabin={cabin} showStatus={showSensitiveInfo} />
         </div>
       </Marker>
-    )), [cabins]);
+    )), [cabins, showSensitiveInfo]);
 
   const stationMarkers = useMemo(() => 
     stations.map((station) => (
@@ -180,17 +206,18 @@ const GeoportalMap = ({
               {'codigo_interno' in popupInfo ? ( // Comprobamos si es una cabina
                 <>
                   <h4 className="font-bold text-gray-800">Cabina: {popupInfo.codigo_interno}</h4>
-                  <div className="flex items-center space-x-2 mt-1">
-                    <div className={`w-3 h-3 rounded-full ${
-                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'normal' ? 'bg-green-500' : 
-                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'warning' ? 'bg-yellow-500' : 
-                      (popupInfo.status || (popupInfo.estado_actual === 'operativo' ? 'normal' : 
-                       popupInfo.estado_actual === 'inusual' ? 'warning' : 'alert')) === 'reaceleracion' ? 'bg-orange-500' : 'bg-red-500'
-                    }`}></div>
-                    <span className="capitalize">{popupInfo.estado_actual}</span>
-                  </div>
+                  {showSensitiveInfo && (
+                    <div className="flex items-center space-x-2 mt-1">
+                      <div className={`w-3 h-3 rounded-full ${getStatusColorClass(getCabinStatus(popupInfo))}`}></div>
+                      <span className="capitalize">
+                        {getCabinStatus(popupInfo) === 'normal' ? 'Operativo' :
+                         getCabinStatus(popupInfo) === 'warning' ? 'Alerta' :
+                         getCabinStatus(popupInfo) === 'alert' ? 'Crítico' :
+                         getCabinStatus(popupInfo) === 'reaceleracion' ? 'Reaceleración' :
+                         popupInfo.estado_actual}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex items-center space-x-2 mt-1 text-gray-600">
                     <ArrowUp size={14} />
                     <span>Velocidad: {Number(popupInfo.velocidad).toFixed(2)} m/s</span>
