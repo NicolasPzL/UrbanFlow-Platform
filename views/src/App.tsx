@@ -125,7 +125,7 @@ export default function App() {
       case 'dashboard':
         return <Dashboard />;
       case 'geoportal-detail':
-        return <DetailedGeoportal />;
+        return <DetailedGeoportal authState={authState} />;
       case 'user-management':
         return <UserManagement />;
       case 'citizen-dashboard':
