@@ -249,40 +249,84 @@ export function Dashboard() {
           ))}
         </div>
 
+        {/* Analytics Section Header */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Análisis Técnico</h2>
+              <p className="text-gray-600 mt-1">
+                Monitoreo avanzado de vibraciones y estados operativos
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <label htmlFor="analytics-cabin-select" className="text-sm font-medium text-gray-700">
+                Cabina:
+              </label>
+              <select
+                id="analytics-cabin-select"
+                value={selectedCabin}
+                onChange={(e) => setSelectedCabin(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              >
+                {(data.availableCabins || data.cabins || []).map((cabin: any) => (
+                  <option key={cabin.id || cabin.codigo} value={cabin.id || cabin.codigo}>
+                    {cabin.id || cabin.codigo}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
         {/* Analytics Section */}
         <div className="mb-8">
           <Tabs defaultValue="vibration" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="vibration">Análisis Vibracional</TabsTrigger>
-              <TabsTrigger value="spectral">Análisis Espectral</TabsTrigger>
-              <TabsTrigger value="operational">Estados Operativos</TabsTrigger>
-              <TabsTrigger value="energy">Energía por Bandas</TabsTrigger>
-            </TabsList>
+            <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 mb-6">
+              <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto bg-gray-50 rounded-lg p-1">
+                <TabsTrigger 
+                  value="vibration" 
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500 py-3 px-2 rounded-md font-medium"
+                >
+                  <div className="flex flex-col items-center space-y-1">
+                    <span className="text-sm font-semibold">Análisis Vibracional</span>
+                    <span className="text-xs text-gray-500 hidden sm:block">RMS, Kurtosis, Crest</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="spectral"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500 py-3 px-2 rounded-md font-medium"
+                >
+                  <div className="flex flex-col items-center space-y-1">
+                    <span className="text-sm font-semibold">Análisis Espectral</span>
+                    <span className="text-xs text-gray-500 hidden sm:block">Frecuencias</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="operational"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500 py-3 px-2 rounded-md font-medium"
+                >
+                  <div className="flex flex-col items-center space-y-1">
+                    <span className="text-sm font-semibold">Estados Operativos</span>
+                    <span className="text-xs text-gray-500 hidden sm:block">Distribución</span>
+                  </div>
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="energy"
+                  className="data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:border-b-2 data-[state=active]:border-blue-500 py-3 px-2 rounded-md font-medium"
+                >
+                  <div className="flex flex-col items-center space-y-1">
+                    <span className="text-sm font-semibold">Energía por Bandas</span>
+                    <span className="text-xs text-gray-500 hidden sm:block">Baja, Media, Alta</span>
+                  </div>
+                </TabsTrigger>
+              </TabsList>
+            </div>
             
             <TabsContent value="vibration" className="mt-6">
               <div className="grid lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>Vibración en Tiempo Real</CardTitle>
-                      <div className="flex items-center space-x-2">
-                        <label htmlFor="cabin-select" className="text-sm font-medium text-gray-700">
-                          Cabina:
-                        </label>
-                        <select
-                          id="cabin-select"
-                          value={selectedCabin}
-                          onChange={(e) => setSelectedCabin(e.target.value)}
-                          className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                          {(data.availableCabins || data.cabins || []).map((cabin: any) => (
-                            <option key={cabin.id || cabin.codigo} value={cabin.id || cabin.codigo}>
-                              {cabin.id || cabin.codigo}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                    <CardTitle>Vibración en Tiempo Real</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ResponsiveContainer width="100%" height={300}>
@@ -453,7 +497,12 @@ export function Dashboard() {
         <Card className="mb-8">
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Historial de Cabinas</CardTitle>
+              <div>
+                <CardTitle>Historial de Cabinas</CardTitle>
+                <p className="text-sm text-gray-600 mt-1">
+                  {historicalData.length} registros disponibles
+                </p>
+              </div>
               <div className="flex items-center space-x-2">
                 <label htmlFor="history-cabin-select" className="text-sm font-medium text-gray-700">
                   Cabina:
@@ -475,36 +524,37 @@ export function Dashboard() {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="max-h-96 overflow-y-auto rounded border">
-            <Table>
-              <TableHeader className="sticky top-0 bg-white z-10">
-                <TableRow>
-                  <TableHead>ID Cabina</TableHead>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>Posición</TableHead>
-                  <TableHead>Velocidad</TableHead>
-                  <TableHead>Vibración</TableHead>
-                  <TableHead>Estado Operativo</TableHead>
-                  <TableHead>Métricas</TableHead>
-                </TableRow>
-              </TableHeader>
+            <div className="relative">
+              <div className="max-h-80 overflow-y-auto rounded border border-gray-200 shadow-sm scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                <Table>
+                <TableHeader className="sticky top-0 bg-gray-50 z-10 border-b border-gray-200">
+                  <TableRow className="hover:bg-gray-50">
+                    <TableHead className="font-semibold text-gray-700">ID Cabina</TableHead>
+                    <TableHead className="font-semibold text-gray-700">Timestamp</TableHead>
+                    <TableHead className="font-semibold text-gray-700">Posición</TableHead>
+                    <TableHead className="font-semibold text-gray-700">Velocidad</TableHead>
+                    <TableHead className="font-semibold text-gray-700">Vibración</TableHead>
+                    <TableHead className="font-semibold text-gray-700">Estado Operativo</TableHead>
+                    <TableHead className="font-semibold text-gray-700">Métricas</TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {historicalData.map((record: any, index: number) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{record.cabinId}</TableCell>
-                    <TableCell>{record.timestamp}</TableCell>
-                    <TableCell>
+                  <TableRow key={index} className="hover:bg-gray-50 transition-colors">
+                    <TableCell className="font-medium text-sm">{record.cabinId}</TableCell>
+                    <TableCell className="text-sm text-gray-600">{record.timestamp}</TableCell>
+                    <TableCell className="text-sm">
                       {((record.position?.x ?? 0).toFixed(1))}, {((record.position?.y ?? 0).toFixed(1))}
                     </TableCell>
-                    <TableCell>{fmtNum(record.velocity)} {fmtNum(record.velocity) === '-' ? '' : 'm/s'}</TableCell>
-                    <TableCell>{fmtRms(record.vibration)}</TableCell>
+                    <TableCell className="text-sm">{fmtNum(record.velocity)} {fmtNum(record.velocity) === '-' ? '' : 'm/s'}</TableCell>
+                    <TableCell className="text-sm">{fmtRms(record.vibration)}</TableCell>
                     <TableCell>
-                      <Badge variant={getStatusVariant(record.status)}>
+                      <Badge variant={getStatusVariant(record.status)} className="text-xs">
                         {record.estado_procesado || record.status || 'Normal'}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="text-xs space-y-1">
+                      <div className="text-xs space-y-1 text-gray-600">
                         <div>Kurt: {fmtNum(record.kurtosis, 3)}</div>
                         <div>Skew: {fmtNum(record.skewness, 3)}</div>
                         <div>Pico: {fmtNum(record.pico, 3)}</div>
@@ -513,7 +563,13 @@ export function Dashboard() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+              {historicalData.length > 8 && (
+                <div className="absolute bottom-2 right-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full shadow-sm animate-pulse">
+                  📜 {historicalData.length} registros - Scroll para ver más
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
