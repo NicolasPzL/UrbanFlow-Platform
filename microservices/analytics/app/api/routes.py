@@ -31,15 +31,7 @@ def get_trayecto_completo(db: Session = Depends(get_db)):
     trayecto = processor.get_complete_trajectory()
     return {"ok": True, "data": trayecto}
 
-@api_router.get("/analytics/summary")
-def get_analytics_summary(db: Session = Depends(get_db)):
-    """Devuelve KPIs agregados del sistema"""
-    try:
-        processor = TelemetryProcessor(db)
-        summary = processor.get_system_summary()
-        return {"ok": True, "data": summary}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+# Endpoint /analytics/summary duplicado - eliminado, usar el de AnalyticsService más abajo
 
 @api_router.get("/data/measurements/recent")
 def get_recent_measurements(limit: int = 500, db: Session = Depends(get_db)):

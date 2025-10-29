@@ -174,6 +174,7 @@ export function PublicGeoportal() {
                 cabins={Array.isArray(data?.cabins) ? data!.cabins : []}
                 stations={Array.isArray(data?.stations) ? data!.stations : []}
                 isPublic={true}
+                showSensitiveInfo={false}
                 className="h-96 w-full"
               />
             )}
