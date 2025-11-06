@@ -40,6 +40,7 @@ async function optionalAuth(req, _res, next) {
 /**
  * Protege la ruta. Si el access token expiró pero hay refresh válido,
  * emite uno nuevo y continúa.
+ * También bloquea acceso si must_change_password es true (excepto rutas permitidas).
  */
 async function requireAuth(req, res, next) {
   try {
@@ -49,6 +50,45 @@ async function requireAuth(req, res, next) {
     try {
       const payload = verifyAccessToken(token);
       req.user = payload;
+      
+      // Verificar si debe cambiar contraseña
+      const mustChangePassword = req.user.must_change_password === true;
+      const isMainAdmin = req.user.email?.toLowerCase() === 'juan.perez@example.com';
+      
+      // Rutas permitidas cuando must_change_password es true (verificar tanto path completo como relativo)
+      const allowedPaths = [
+        '/api/auth/me',
+        '/api/auth/change-password',
+        '/api/auth/logout',
+        '/me',
+        '/change-password',
+        '/logout'
+      ];
+      // Verificar tanto req.path (relativo al router) como req.originalUrl (completo)
+      const currentPath = req.path;
+      const originalUrl = req.originalUrl?.split('?')[0]; // Sin query params
+      
+      const isAllowed = allowedPaths.includes(currentPath) || allowedPaths.includes(originalUrl);
+      
+      // Si debe cambiar contraseña y no es el admin principal y no está en ruta permitida
+      if (mustChangePassword && !isMainAdmin && !isAllowed) {
+        console.log('[AUTH] Bloqueando acceso - must_change_password:', {
+          path: currentPath,
+          originalUrl: originalUrl,
+          allowedPaths,
+          isAllowed,
+          mustChangePassword,
+          isMainAdmin
+        });
+        return res.status(403).json({ 
+          ok: false,
+          error: { 
+            code: 'MUST_CHANGE_PASSWORD', 
+            message: 'Debes cambiar tu contraseña para continuar' 
+          } 
+        });
+      }
+      
       return next();
     } catch (err) {
       // Intento de rotación con refresh si el error es por expiración
@@ -65,6 +105,40 @@ async function requireAuth(req, res, next) {
       res.cookie(REFRESH_COOKIE_NAME, newRefresh, refreshCookieOptions);
 
       req.user = stripIatExp(refreshPayload);
+      
+      // Verificar must_change_password también después de refresh
+      const mustChangePassword = req.user.must_change_password === true;
+      const isMainAdmin = req.user.email?.toLowerCase() === 'juan.perez@example.com';
+      const allowedPaths = [
+        '/api/auth/me',
+        '/api/auth/change-password',
+        '/api/auth/logout',
+        '/me',
+        '/change-password',
+        '/logout'
+      ];
+      const currentPath = req.path;
+      const originalUrl = req.originalUrl?.split('?')[0]; // Sin query params
+      const isAllowed = allowedPaths.includes(currentPath) || allowedPaths.includes(originalUrl);
+      
+      if (mustChangePassword && !isMainAdmin && !isAllowed) {
+        console.log('[AUTH] Bloqueando acceso después de refresh - must_change_password:', {
+          path: currentPath,
+          originalUrl: originalUrl,
+          allowedPaths,
+          isAllowed,
+          mustChangePassword,
+          isMainAdmin
+        });
+        return res.status(403).json({ 
+          ok: false,
+          error: { 
+            code: 'MUST_CHANGE_PASSWORD', 
+            message: 'Debes cambiar tu contraseña para continuar' 
+          } 
+        });
+      }
+      
       return next();
     }
   } catch (_err) {

@@ -110,3 +110,16 @@ export function getTokenFromHeader(req) {
 export function getTokenFromCookie(req) {
   return req.cookies?.[AUTH_COOKIE_NAME] || null;
 }
+
+/**
+ * Genera un token JWT para reset de contraseña
+ * @param {Object} payload - Datos a incluir (debe incluir sub, pr: 'pwd_reset', pwd: hash del password_hash)
+ * @param {Object} options - Opciones adicionales
+ * @returns {string} Token JWT de reset
+ */
+export function signPasswordResetToken(payload, options = {}) {
+  return jwt.sign(payload, JWT_SECRET, {
+    expiresIn: '15m', // 15 minutos para reset
+    ...options
+  });
+}

@@ -4,7 +4,7 @@ import * as Users from '../models/userModel.js';
 import * as UserRoles from '../models/userRolModel.js';
 import * as Roles from '../models/rolModel.js';
 import * as Audit from '../models/auditoriaModel.js';
-import { hashPassword } from '../utils/password.js';
+import { hashPassword, generateTemporaryPassword } from '../utils/password.js';
 
 // Listado de usuarios (usado por routes/userRoutes.js -> GET /api/users)
 export const listUsers = asyncHandler(async (req, res) => {
@@ -29,10 +29,10 @@ export const getUser = asyncHandler(async (req, res) => {
   res.json({ ok: true, data: { ...u, roles: rolesAssigned.map(r => r.nombre_rol) } });
 });
 export const createUser = asyncHandler(async (req, res) => {
-  const { nombre, correo, password, passwordHash, mustChangePassword = false } = req.body || {};
+  const { nombre, correo } = req.body || {};
   let { rol, roles } = req.body || {};
-  if (!nombre || !correo || (!password && !passwordHash)) {
-    throw new AppError('Datos inválidos: se requiere password o passwordHash', { status: 400, code: 'VALIDATION_ERROR' });
+  if (!nombre || !correo) {
+    throw new AppError('Datos inválidos: se requiere nombre y correo', { status: 400, code: 'VALIDATION_ERROR' });
   }
 
   // Normalizar roles a arreglo
@@ -50,10 +50,16 @@ export const createUser = asyncHandler(async (req, res) => {
     }
   }
 
+  // Generar contraseña temporal segura (12-16 caracteres)
+  const tempPassword = generateTemporaryPassword(14);
+  const passwordHash = await hashPassword(tempPassword, 12);
+  
   // Rol primario = Primero del arreglo
   const primaryRole = desiredRoles[0];
-  const finalHash = password ? await hashPassword(password, 12) : passwordHash;
-  const user = await Users.createUser({ nombre, correo, passwordHash: finalHash, rol: primaryRole, mustChangePassword });
+  // Usuarios no-admin deben cambiar contraseña en primer login
+  const mustChangePassword = !desiredRoles.includes('admin');
+  
+  const user = await Users.createUser({ nombre, correo, passwordHash, rol: primaryRole, mustChangePassword });
 
   // Sincronizar roles en rol_usuario
   for (const rname of desiredRoles) {
@@ -62,7 +68,16 @@ export const createUser = asyncHandler(async (req, res) => {
 
   const rolesAssigned = await UserRoles.getUserRoles(user.usuario_id);
   await Audit.log({ usuario_id: req.user.id, accion: 'CREATE_USER', detalles: { usuario_id: user.usuario_id, roles: desiredRoles } });
-  res.status(201).json({ ok: true, data: { ...user, roles: rolesAssigned.map(r => r.nombre_rol) } });
+  
+  // Devolver la contraseña temporal SOLO UNA VEZ (no se guarda en ningún otro lugar)
+  res.status(201).json({ 
+    ok: true, 
+    data: { 
+      ...user, 
+      roles: rolesAssigned.map(r => r.nombre_rol),
+      temporaryPassword: tempPassword // Solo se devuelve una vez en la creación
+    } 
+  });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
