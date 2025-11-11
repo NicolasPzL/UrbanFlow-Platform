@@ -1,8 +1,9 @@
 // components/GeoportalMap.tsx
-import React, { useState, useMemo, useEffect } from 'react';
-import Map, { Marker, Popup, NavigationControl, FullscreenControl } from 'react-map-gl';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import Map, { Marker, Popup, NavigationControl, FullscreenControl, MapRef } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MapPin, ArrowUp, Server, AlertCircle } from 'lucide-react';
+import type { MapboxEvent } from 'mapbox-gl';
 
 // Definir tipos para window global
 declare global {
@@ -11,8 +12,9 @@ declare global {
   }
 }
 
-// Import types from types file
-import { CabinData, StationData } from '../types';
+// Import types and helpers
+import { CabinData, StationData, MapMode } from '../types';
+import { applyMapMode, getDefaultViewState } from '../lib/mapModes';
 
 // Definición de tipos para las props del componente
 type GeoportalMapProps = {
@@ -21,6 +23,8 @@ type GeoportalMapProps = {
   className?: string;
   isPublic?: boolean;
   showSensitiveInfo?: boolean; // Controla si se muestran estados de cabinas y otra info sensible
+  mode?: MapMode;
+  autoFocus?: 'stations' | 'cabins' | 'all' | 'none';
 };
 
 // --- Sub-componente para el marcador de la cabina ---
@@ -50,16 +54,66 @@ const CabinMarker = ({ cabin, showStatus = true }: { cabin: CabinData; showStatu
 
 // --- Componente principal del mapa interactivo ---
 const GeoportalMap = ({ 
-  cabins = [], 
-  stations = [], 
+  cabins = [],
+  stations = [],
   className = '',
   width = '100%',
   height = '100%',
-  showSensitiveInfo = true
-}: GeoportalMapProps & { width?: string | number, height?: string | number }) => {
+  showSensitiveInfo = true,
+  mode = '2d',
+  autoFocus = 'stations',
+}: GeoportalMapProps & { width?: string | number; height?: string | number }) => {
   const [popupInfo, setPopupInfo] = useState<CabinData | StationData | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  const mapRef = useRef<MapRef | null>(null);
+  const hasAppliedAutoFocusRef = useRef(false);
   const mapboxToken = (import.meta as any).env?.VITE_MAPBOX_ACCESS_TOKEN || '';
+
+  // Normaliza cabinas (asegurando coordenadas y valores numéricos válidos)
+  const sanitizedCabins = useMemo<CabinData[]>(() => {
+    return cabins.reduce<CabinData[]>((acc, cabin) => {
+      const lat = Number(cabin.latitud);
+      const lng = Number(cabin.longitud);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        console.warn?.('[GeoportalMap] Cabina ignorada por coordenadas inválidas', cabin);
+        return acc;
+      }
+
+      const safeVelocity = Number.isFinite(Number(cabin.velocidad))
+        ? Number(cabin.velocidad)
+        : 0;
+
+      acc.push({
+        ...cabin,
+        latitud: lat,
+        longitud: lng,
+        velocidad: safeVelocity,
+      });
+      return acc;
+    }, []);
+  }, [cabins]);
+
+  // Normaliza estaciones
+  const sanitizedStations = useMemo<StationData[]>(() => {
+    return stations.reduce<StationData[]>((acc, station) => {
+      const lat = Number(station.latitud);
+      const lng = Number(station.longitud);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        console.warn?.('[GeoportalMap] Estación ignorada por coordenadas inválidas', station);
+        return acc;
+      }
+
+      acc.push({
+        ...station,
+        latitud: lat,
+        longitud: lng,
+      });
+      return acc;
+    }, []);
+  }, [stations]);
+
+  const resolvedMode = mode ?? '2d';
+  const resolvedAutoFocus = autoFocus ?? 'stations';
 
   // Helper function para obtener el status de una cabina
   const getCabinStatus = (cabin: CabinData): string => {
@@ -85,8 +139,77 @@ const GeoportalMap = ({
       setMapError('El token de Mapbox no está configurado. Por favor, verifica tus variables de entorno.');
       console.error('Error: VITE_MAPBOX_ACCESS_TOKEN no está definido');
     }
-    // Removemos la verificación de window.mapboxgl ya que puede causar problemas
   }, [mapboxToken]);
+
+  const applyAutoFocus = useCallback(
+    (force = false) => {
+      const map = mapRef.current?.getMap();
+      if (!map) return;
+      if (hasAppliedAutoFocusRef.current && !force) return;
+      if (resolvedAutoFocus === 'none') return;
+
+      const candidatePoints = (() => {
+        if (resolvedAutoFocus === 'stations') return sanitizedStations;
+        if (resolvedAutoFocus === 'cabins') return sanitizedCabins;
+        if (resolvedAutoFocus === 'all') return [...sanitizedStations, ...sanitizedCabins];
+        return [];
+      })();
+
+      const effectivePoints = candidatePoints.length > 0 ? candidatePoints : sanitizedCabins;
+      if (!effectivePoints.length) return;
+
+      const longitudes = effectivePoints.map((item) => item.longitud);
+      const latitudes = effectivePoints.map((item) => item.latitud);
+      const minLng = Math.min(...longitudes);
+      const maxLng = Math.max(...longitudes);
+      const minLat = Math.min(...latitudes);
+      const maxLat = Math.max(...latitudes);
+
+      if (!Number.isFinite(minLng) || !Number.isFinite(maxLng) || !Number.isFinite(minLat) || !Number.isFinite(maxLat)) {
+        return;
+      }
+
+      if (effectivePoints.length === 1) {
+        const point = effectivePoints[0];
+        map.flyTo({
+          center: [point.longitud, point.latitud],
+          zoom: Math.max(map.getZoom(), resolvedMode === '3d' ? 15 : 14),
+          duration: 900,
+        });
+      } else {
+        map.fitBounds(
+          [
+            [minLng, minLat],
+            [maxLng, maxLat],
+          ],
+          {
+            padding: 80,
+            duration: 900,
+            maxZoom: resolvedMode === '3d' ? 16.5 : 15.5,
+          },
+        );
+      }
+
+      hasAppliedAutoFocusRef.current = true;
+    },
+    [resolvedAutoFocus, sanitizedStations, sanitizedCabins, resolvedMode],
+  );
+
+  useEffect(() => {
+    const map = mapRef.current?.getMap();
+    if (!map) return;
+    applyMapMode(map, resolvedMode, { animate: true });
+  }, [resolvedMode]);
+
+  useEffect(() => {
+    if (!sanitizedStations.length && !sanitizedCabins.length) {
+      hasAppliedAutoFocusRef.current = false;
+    }
+  }, [sanitizedStations.length, sanitizedCabins.length]);
+
+  useEffect(() => {
+    applyAutoFocus();
+  }, [applyAutoFocus]);
 
   if (mapError) {
     return (
@@ -98,23 +221,35 @@ const GeoportalMap = ({
     );
   }
 
-  const cabinMarkers = useMemo(() => 
-    cabins.map((cabin) => (
+  const cabinMarkers = useMemo(() =>
+    sanitizedCabins.map((cabin) => (
       <Marker key={`cabin-${cabin.cabina_id}`} longitude={cabin.longitud} latitude={cabin.latitud}>
         <div onMouseEnter={() => setPopupInfo(cabin)} onMouseLeave={() => setPopupInfo(null)}>
           <CabinMarker cabin={cabin} showStatus={showSensitiveInfo} />
         </div>
       </Marker>
-    )), [cabins, showSensitiveInfo]);
+    )), [sanitizedCabins, showSensitiveInfo]);
 
-  const stationMarkers = useMemo(() => 
-    stations.map((station) => (
+  const stationMarkers = useMemo(() =>
+    sanitizedStations.map((station) => (
       <Marker key={`station-${station.estacion_id}`} longitude={station.longitud} latitude={station.latitud}>
         <div onMouseEnter={() => setPopupInfo(station)} onMouseLeave={() => setPopupInfo(null)}>
           <MapPin className="text-blue-600 w-8 h-8 drop-shadow-lg cursor-pointer transform hover:scale-110 transition-transform" />
         </div>
       </Marker>
-    )), [stations]);
+    )), [sanitizedStations]);
+
+  const handleMapLoad = useCallback((evt: MapboxEvent) => {
+    setMapError(null);
+    try {
+      const mapInstance = mapRef.current?.getMap() ?? evt.target;
+      applyMapMode(mapInstance, resolvedMode, { animate: false, persistLayer: resolvedMode === '3d' });
+      applyAutoFocus(true);
+      console.log('Mapa cargado correctamente');
+    } catch (error) {
+      console.error('Error durante la carga inicial del mapa:', error);
+    }
+  }, [resolvedMode, applyAutoFocus]);
 
   return (
     <div className={className}>
@@ -129,12 +264,9 @@ const GeoportalMap = ({
           </div>
         ) : (
           <Map
+            ref={mapRef}
             initialViewState={{
-              longitude: -75.56,  // Centrado en Medellín por defecto
-              latitude: 6.25,
-              zoom: 13,
-              pitch: 45,
-              bearing: -17.6,
+              ...getDefaultViewState(resolvedMode),
             }}
             style={{ width, height }}
             mapStyle="mapbox://styles/mapbox/streets-v12"
@@ -144,51 +276,7 @@ const GeoportalMap = ({
               console.error('Error en el mapa:', e);
               setMapError('Error al cargar el mapa. Por favor, intente recargar la página.');
             }}
-            onLoad={(e: any) => {
-              setMapError(null);
-              console.log('Mapa cargado correctamente');
-              
-              // Configuración básica del mapa - sin capas 3D por ahora
-              const map = e.target;
-              
-              // Solo agregar edificios 3D si el mapa está completamente cargado
-              try {
-                if (map.getSource('composite')) {
-                  map.addLayer({
-                    'id': '3d-buildings',
-                    'source': 'composite',
-                    'source-layer': 'building',
-                    'filter': ['==', 'extrude', 'true'],
-                    'type': 'fill-extrusion',
-                    'minzoom': 15,
-                    'paint': {
-                      'fill-extrusion-color': '#aaa',
-                      'fill-extrusion-height': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        15,
-                        0,
-                        15.05,
-                        ['get', 'height']
-                      ],
-                      'fill-extrusion-base': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        15,
-                        0,
-                        15.05,
-                        ['get', 'min_height']
-                      ],
-                      'fill-extrusion-opacity': 0.6
-                    }
-                  });
-                }
-              } catch (error) {
-                console.warn('No se pudieron agregar los edificios 3D:', error);
-              }
-            }}
+            onLoad={handleMapLoad}
             attributionControl={false}
       >
         <NavigationControl />

@@ -6,7 +6,8 @@ import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 // Datos ahora vienen del backend público /api/map/public
 import { Filter, MapPin, Activity, Users, Eye } from "lucide-react";
-import { AuthState } from "../types";
+import { AuthState, MapMode } from "../types";
+import { MapModeToggle } from "./ui/MapModeToggle";
 
 interface DetailedGeoportalProps {
   authState?: AuthState;
@@ -19,6 +20,7 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
   const [cabins, setCabins] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mapMode, setMapMode] = useState<MapMode>('2d');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -73,6 +75,10 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
   const totalPassengers = 0; // Placeholder - no tenemos datos de pasajeros en la BD
   const avgVibration = '0.00'; // Placeholder - no tenemos datos de vibración en la BD
   const avgVelocity = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.velocidad || 0), 0) / cabins.length).toFixed(1) : '0.0';
+
+  const toggleMapMode = () => {
+    setMapMode((prev) => (prev === '2d' ? '3d' : '2d'));
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -180,14 +186,17 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         {/* Interactive Map */}
         <Card className="mb-8">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="flex items-center space-x-2">
                 <MapPin className="h-5 w-5" />
                 <span>Mapa Operacional Detallado</span>
               </CardTitle>
-              <Badge variant="outline">
-                {filteredCabins.length} de {cabins.length} cabinas mostradas
-              </Badge>
+              <div className="flex items-center gap-3">
+                <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
+                <Badge variant="outline">
+                  {filteredCabins.length} de {cabins.length} cabinas mostradas
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -202,6 +211,8 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
                 isPublic={false}
                 showSensitiveInfo={authState?.user?.rol !== 'cliente'}
                 className="h-96 w-full"
+                mode={mapMode}
+                autoFocus="stations"
               />
             )}
           </CardContent>

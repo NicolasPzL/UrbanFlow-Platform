@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Activity, MapPin, Users, Clock, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { MapMode } from "../types";
+import { MapModeToggle } from "./ui/MapModeToggle";
 
 type PublicMapData = {
   message?: string;
@@ -20,6 +22,7 @@ export function PublicGeoportal() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('connected');
+  const [mapMode, setMapMode] = useState<MapMode>('2d');
 
   const fetchData = useCallback(async (isManualRefresh = false) => {
     if (isManualRefresh) {
@@ -85,6 +88,9 @@ export function PublicGeoportal() {
                 <span>Actualizar</span>
               </Button>
             </div>
+          </div>
+          <div className="flex justify-center">
+            <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
           </div>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
             Monitorea en tiempo real el estado de nuestro sistema de transporte por cable aéreo. 
@@ -176,6 +182,8 @@ export function PublicGeoportal() {
                 isPublic={true}
                 showSensitiveInfo={false}
                 className="h-96 w-full"
+                mode={mapMode}
+                autoFocus="stations"
               />
             )}
           </CardContent>
