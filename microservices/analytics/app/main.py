@@ -4,6 +4,10 @@ from fastapi.responses import JSONResponse
 from .api.routes import api_router
 from .core.config import settings
 import logging
+import os
+import json
+from pathlib import Path
+from datetime import datetime, timezone
 
 # Configurar logging
 try:
@@ -19,6 +23,23 @@ except Exception as e:
     )
 
 logger = logging.getLogger(__name__)
+AUDIT_LOG_PATH = Path(__file__).resolve().parents[2] / 'logs' / 'auditoria.log'
+
+def _write_audit(event: str, details: dict | None = None):
+    payload = {
+        "event": event,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+    if details:
+        payload["details"] = details
+    message = json.dumps(payload, ensure_ascii=False)
+    logger.info("[AUDIT] %s", message)
+    try:
+        AUDIT_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with AUDIT_LOG_PATH.open("a", encoding="utf-8") as fh:
+            fh.write(f"{message}\n")
+    except Exception as exc:
+        logger.warning("No se pudo escribir en auditoria.log: %s", exc)
 
 app = FastAPI(
     title=settings.SERVICE_NAME,
@@ -100,9 +121,19 @@ async def http_exception_handler(request, exc):
 @app.exception_handler(Exception)
 async def general_exception_handler(request, exc):
     logger.error(f"Unhandled exception: {exc}")
+    _write_audit("GENERATOR_ERROR", {"detail": str(exc)})
     return JSONResponse(
         status_code=500,
         content={"ok": False, "error": "Internal server error"}
     )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+@app.on_event("startup")
+async def on_startup():
+    generator_enabled = os.getenv("GENERATOR_ENABLED", "false").lower() == "true"
+    _write_audit("GENERATOR_START", {"enabled": generator_enabled})
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    _write_audit("GENERATOR_STOP", {})

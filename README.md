@@ -242,3 +242,23 @@ docker run --rm -e ANALYTICS_DATABASE_URL="postgresql+psycopg2://postgres:postgr
 - **Roles inválidos al crear/editar**:
   - La BD debe contener los nombres de roles esperados. El front normaliza valores y el back valida existencia.
 
+---
+
+## Documentación Complementaria
+
+Toda la documentación técnica y de proceso se encuentra en `docs/`. Referencias clave:
+
+- `docs/plan_ciclo_vida.md` – Gobierno del ciclo de vida, roles y gates.
+- `docs/trazabilidad_requisitos.md` – Matriz de requisitos vs. módulos y métricas.
+- `docs/politica_versionado.md` y `CHANGELOG.md` – Estrategia SemVer y registro histórico.
+- `docs/manual_usuario.md` / `docs/manual_admin.md` – Guías operativas.
+- `docs/plan_configuracion.md` – Gestión de configuración, secretos y respaldos.
+- `docs/politica_seguridad.md` – Controles de seguridad y respuesta a incidentes.
+- `docs/plan_proyecto_uf.md` y `docs/cronograma.md` – Plan del proyecto y calendario quincenal.
+- `docs/matriz_riesgos.md` – Riesgos priorizados con planes de mitigación.
+- `docs/roadmap_cmmilevel2.md` – Evolución planificada hacia CMMI Nivel 2.
+- `docs/indicadores_calidad.md` – KPIs para disponibilidad, latencia y auditoría.
+- `docs/checklist_cumplimiento.md` – Resumen de cumplimiento normativo (incluye ISO 29119 como pendiente).
+
+Consulte estos archivos después de cada sprint para asegurar que los acuerdos de cumplimiento sigan vigentes.
+
