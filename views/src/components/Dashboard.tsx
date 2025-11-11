@@ -6,6 +6,18 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle, MapPin, Clock, Zap, BarChart3, Thermometer, Target, Navigation } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
+const normalizeCabinId = (value?: string | null): string | null => {
+  if (value === undefined || value === null) return null;
+  const raw = String(value).trim().toUpperCase();
+  if (!raw) return null;
+  if (raw === 'ALL') return 'all';
+  if (/^CAB-\d{4}$/.test(raw)) return raw;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return raw;
+  const padded = digits.slice(-4).padStart(4, '0');
+  return `CAB-${padded}`;
+};
+
 type DashboardData = {
   kpis?: { 
     id: string; 
@@ -45,7 +57,7 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCabin, setSelectedCabin] = useState<string>('CB001');
+  const [selectedCabin, setSelectedCabin] = useState<string>('all');
 
   useEffect(() => {
     (async () => {
@@ -56,9 +68,17 @@ export function Dashboard() {
         const json = await resp.json();
         console.log('Datos del dashboard recibidos:', json);
         setData(json.data || {});
-        if (Array.isArray(json?.data?.cabins) && json.data.cabins.length > 0) {
-          const firstId = String(json.data.cabins[0].id);
-          setSelectedCabin(firstId);
+        const cabinList = Array.isArray(json?.data?.availableCabins)
+          ? json.data.availableCabins
+          : Array.isArray(json?.data?.cabins)
+          ? json.data.cabins
+          : [];
+        if (cabinList.length > 0) {
+          const firstRaw = cabinList[0]?.id ?? cabinList[0]?.codigo ?? cabinList[0]?.label;
+          const canonicalFirst = normalizeCabinId(firstRaw);
+          if (canonicalFirst && canonicalFirst !== 'all') {
+            setSelectedCabin(canonicalFirst);
+          }
         }
         // Paralelamente, intentar cargar resumen de analytics (FastAPI vía proxy)
         Promise.allSettled([
@@ -93,27 +113,100 @@ export function Dashboard() {
     : Array.isArray(data.cabins)
     ? data.cabins.map((c: any) => ({
         cabinId: c.id ?? 'CB', timestamp: '2025-01-09 14:30:00', position: c.position ?? {x:0,y:0}, velocity: c.velocity ?? 0,
-        vibration: c.vibrationLast ?? 0, passengers: c.passengers ?? 0, status: c.status ?? 'normal'
+        vibration: c.vibrationLast ?? 0, passengers: c.passengers ?? 0, status: c.status ?? 'normal', cabinAliases: c.aliases ?? []
       }))
     : [];
 
-  // Filtrar datos de vibración basados en la cabina seleccionada
-  const vibrationChartData = Array.isArray(data.vibrationSeries) 
-    ? data.vibrationSeries.filter(item => {
-        // Si los datos incluyen cabinId, filtrar por él
-        if (item.cabinId) {
-          const matches = item.cabinId === selectedCabin;
-          console.log(`Filtrando ${item.cabinId} vs ${selectedCabin}: ${matches}`);
-          return matches;
-        }
-        // Si no hay cabinId, asumir que son datos de la cabina seleccionada
-        return true;
+  const rawVibrationSeries = Array.isArray(data.vibrationSeries) ? data.vibrationSeries : [];
+  const fallbackSeries = !rawVibrationSeries.length
+    ? historicalData.map((item) => {
+        const ts = item.timestamp ? new Date(item.timestamp) : new Date();
+        const cabinId = item.cabinId ? String(item.cabinId) : selectedCabin;
+        const aliases = Array.isArray(item.cabinAliases) ? item.cabinAliases : [];
+        return {
+          time: ts.toTimeString().slice(0, 5),
+          timestamp: ts.toISOString(),
+          vibration: Number(item.vibration ?? item.rms ?? 0) || 0,
+          kurtosis: Number(item.kurtosis) || 0,
+          skewness: Number(item.skewness) || 0,
+          pico: Number(item.pico) || 0,
+          crest_factor: Number(item.crest_factor ?? item.crestFactor) || 0,
+          zcr: Number(item.zcr) || 0,
+          frecuencia_media: Number(item.frecuencia_media) || 0,
+          frecuencia_dominante: Number(item.frecuencia_dominante) || 0,
+          amplitud_max_espectral: Number(item.amplitud_max_espectral) || 0,
+          energia_banda_1: Number(item.energia_banda_1) || 0,
+          energia_banda_2: Number(item.energia_banda_2) || 0,
+          energia_banda_3: Number(item.energia_banda_3) || 0,
+          estado_procesado: item.estado_procesado || item.estado || 'desconocido',
+          cabinId,
+          cabinAliases: aliases,
+        };
       })
     : [];
 
-  console.log('Datos de vibración filtrados:', vibrationChartData);
-  console.log('Cabina seleccionada:', selectedCabin);
+  const normalizedVibrationSeries = (rawVibrationSeries.length ? rawVibrationSeries : fallbackSeries).map((item) => {
+    if (item.time && item.timestamp) {
+      return item;
+    }
+    const aliasesRaw = Array.isArray(item.cabinAliases) ? item.cabinAliases : [];
+    const normalizedAliases = Array.from(
+      new Set(
+        [
+          normalizeCabinId(item.cabinId),
+          ...aliasesRaw.map((alias: string) => normalizeCabinId(alias)),
+        ].filter((alias): alias is string => Boolean(alias) && alias !== 'all')
+      )
+    );
+    const canonicalId = normalizeCabinId(item.cabinId) || item.cabinId;
+    const ts = item.timestamp ? new Date(item.timestamp) : new Date();
+    return {
+      ...item,
+      cabinId: canonicalId,
+      cabinAliases: Array.from(new Set([...aliasesRaw, canonicalId].filter(Boolean))),
+      normalizedCabinAliases: normalizedAliases,
+      time: item.time ?? ts.toTimeString().slice(0, 5),
+      timestamp: ts.toISOString(),
+    };
+  });
+
+  // Filtrar datos de vibración basados en la cabina seleccionada
+  const vibrationChartData = normalizedVibrationSeries
+    .filter((item) => {
+      if (selectedCabin === 'all') return true;
+      const canonicalSelected = normalizeCabinId(selectedCabin);
+      if (!canonicalSelected || canonicalSelected === 'all') return true;
+      const aliases = Array.isArray(item.normalizedCabinAliases) ? item.normalizedCabinAliases : [];
+      const matches = aliases.includes(canonicalSelected) || normalizeCabinId(item.cabinId) === canonicalSelected;
+      if (item.cabinId && canonicalSelected) {
+        console.log(`Filtrando ${item.cabinId} con aliases ${aliases.join(', ')} vs ${canonicalSelected}: ${matches}`);
+      }
+      return matches;
+    })
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  const cabinOptions = Array.isArray(data.availableCabins)
+    ? data.availableCabins
+    : Array.isArray(data.cabins)
+    ? data.cabins
+    : [];
   const passengersChartData = Array.isArray(data.passengersSeries) ? data.passengersSeries : [];
+  const activeAlerts = Array.isArray(data.alerts) ? data.alerts : [];
+  const severityBadge: Record<string, string> = {
+    critical: 'bg-red-100 text-red-700 border border-red-300',
+    warning: 'bg-yellow-100 text-yellow-800 border border-yellow-300',
+    info: 'bg-blue-100 text-blue-700 border border-blue-300',
+  };
+  const severityLabel: Record<string, string> = {
+    critical: 'Crítica',
+    warning: 'Advertencia',
+    info: 'Info',
+  };
+  const selectedCabinAlert = activeAlerts.find(
+    (alert) =>
+      normalizeCabinId(alert.cabinId) === normalizeCabinId(selectedCabin) &&
+      alert.severity !== undefined
+  );
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -191,6 +284,13 @@ export function Dashboard() {
               </p>
             </div>
             <div className="text-right">
+              {activeAlerts.length > 0 && (
+                <div className="mb-2">
+                  <span className="inline-flex items-center rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700 border border-red-200">
+                    {activeAlerts.length} alerta{activeAlerts.length === 1 ? '' : 's'} activa{activeAlerts.length === 1 ? '' : 's'}
+                  </span>
+                </div>
+              )}
               <div className="text-sm text-gray-500">Última actualización</div>
               <div className="text-lg font-medium text-gray-900">
                 {data.timestamp ? new Date(data.timestamp).toLocaleTimeString() : 'N/A'}
@@ -203,51 +303,106 @@ export function Dashboard() {
         <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <div
+                className={`w-3 h-3 rounded-full ${selectedCabinAlert ? 'bg-red-500 animate-pulse' : 'bg-green-500 animate-pulse'}`}
+              ></div>
               <div>
-                <h3 className="text-sm font-medium text-green-800">Sistema Operativo</h3>
-                <p className="text-xs text-green-600">
-                  Microservicio de analítica conectado | {vibrationChartData.length} mediciones disponibles
+                <h3 className={`text-sm font-medium ${selectedCabinAlert ? 'text-red-800' : 'text-green-800'}`}>
+                  {selectedCabinAlert ? 'Atención requerida' : 'Sistema Operativo'}
+                </h3>
+                <p className={`text-xs ${selectedCabinAlert ? 'text-red-600' : 'text-green-600'}`}>
+                  {selectedCabinAlert
+                    ? `La cabina ${selectedCabinAlert.cabinId} presenta una alerta ${severityLabel[selectedCabinAlert.severity] ?? selectedCabinAlert.severity}.`
+                    : `Microservicio de analítica conectado | ${vibrationChartData.length} mediciones disponibles`}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-xs text-green-600">Cabina seleccionada</div>
-              <div className="text-sm font-medium text-green-800">{selectedCabin}</div>
+              <div className={`text-xs ${selectedCabinAlert ? 'text-red-600' : 'text-green-600'}`}>
+                Cabina seleccionada
+              </div>
+              <div className={`text-sm font-medium ${selectedCabinAlert ? 'text-red-800' : 'text-green-800'}`}>
+                {selectedCabin}
+              </div>
             </div>
           </div>
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {(data.kpis || []).map((kpi) => (
-            <Card key={kpi.id} className={`${kpi.status === 'warning' ? 'border-yellow-200 bg-yellow-50' : ''}`}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">{kpi.title}</CardTitle>
-                <div className="h-4 w-4 text-muted-foreground">
-                  {kpi.id === 'kpi1' && <Activity />}
-                  {kpi.id === 'kpi2' && <AlertTriangle />}
-                  {kpi.id === 'kpi3' && <Gauge />}
-                  {kpi.id === 'kpi4' && <MapPin />}
-                  {kpi.id === 'kpi5' && <BarChart3 />}
-                  {kpi.id === 'kpi6' && <Zap />}
-                  {kpi.id === 'kpi7' && <Target />}
-                  {kpi.id === 'kpi8' && <Navigation />}
+        {Array.isArray(data.kpis) && data.kpis.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {data.kpis.map((kpi) => (
+              <Card key={kpi.id} className={kpi.status === 'warning' ? 'border-yellow-200 bg-yellow-50' : ''}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">{kpi.title}</CardTitle>
+                  <div className="h-4 w-4 text-muted-foreground">
+                    {kpi.id === 'kpi1' && <Activity />}
+                    {kpi.id === 'kpi2' && <AlertTriangle />}
+                    {kpi.id === 'kpi3' && <Gauge />}
+                    {kpi.id === 'kpi4' && <MapPin />}
+                    {kpi.id === 'kpi5' && <BarChart3 />}
+                    {kpi.id === 'kpi6' && <Zap />}
+                    {kpi.id === 'kpi7' && <Target />}
+                    {kpi.id === 'kpi8' && <Navigation />}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{kpi.value}</div>
+                  {kpi.description && (
+                    <p className="text-xs text-muted-foreground mt-1">{kpi.description}</p>
+                  )}
+                  <div className="flex items-center justify-between mt-2">
+                    {formatChange(kpi.change)}
+                    <span className="text-xs text-muted-foreground">vs período anterior</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {activeAlerts.length > 0 && (
+          <Card className="mb-8 border-red-200 shadow-sm shadow-red-100">
+            <CardHeader>
+              <CardTitle>Alertas Activas</CardTitle>
+              <p className="text-sm text-gray-600">
+                Estas alertas se generan automáticamente a partir de las métricas de vibración y velocidad. Revisa cada cabina antes de reanudar operaciones normales.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activeAlerts.slice(0, 8).map((alert) => (
+                <div
+                  key={`${alert.cabinId}-${alert.code}`}
+                  className="flex items-start justify-between rounded-lg border border-gray-200 p-4 bg-white"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Badge className={severityBadge[alert.severity] ?? severityBadge.info}>
+                        {severityLabel[alert.severity] ?? alert.severity}
+                      </Badge>
+                      <span className="text-sm font-semibold text-gray-900">
+                        {alert.cabinId ?? 'Cabina desconocida'}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-gray-800">{alert.message}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Código: {alert.code} · {alert.timestamp ? new Date(alert.timestamp).toLocaleString() : '—'}
+                    </p>
+                  </div>
+                  <div className="text-xs text-gray-500 text-right leading-5">
+                    {alert.sensor_id ? <>Sensor #{alert.sensor_id}<br /></> : null}
+                    {alert.cabinId ? <>Cabina: {alert.cabinId}</> : null}
+                  </div>
                 </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{kpi.value}</div>
-                {kpi.description && (
-                  <p className="text-xs text-muted-foreground mt-1">{kpi.description}</p>
-                )}
-                <div className="flex items-center justify-between mt-2">
-                  {formatChange(kpi.change)}
-                  <span className="text-xs text-muted-foreground">vs período anterior</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              ))}
+              {activeAlerts.length > 8 && (
+                <p className="text-xs text-gray-500">
+                  Mostrando 8 de {activeAlerts.length} alertas. Consulta el histórico para revisar el resto.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Analytics Section Header */}
         <div className="mb-6">
@@ -268,11 +423,16 @@ export function Dashboard() {
                 onChange={(e) => setSelectedCabin(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               >
-                {(data.availableCabins || data.cabins || []).map((cabin: any) => (
-                  <option key={cabin.id || cabin.codigo} value={cabin.id || cabin.codigo}>
-                    {cabin.id || cabin.codigo}
-                  </option>
-                ))}
+                <option value="all">Todas las cabinas</option>
+                {cabinOptions.map((cabin: any) => {
+                  const value = normalizeCabinId(cabin.id || cabin.codigo || cabin.label) || (cabin.id || cabin.codigo);
+                  const label = cabin.label || cabin.codigo || cabin.id || value;
+                  return (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
@@ -514,11 +674,15 @@ export function Dashboard() {
                   className="px-3 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 >
                   <option value="all">Todas las cabinas</option>
-                  {(data.availableCabins || data.cabins || []).map((cabin: any) => (
-                    <option key={cabin.id || cabin.codigo} value={cabin.id || cabin.codigo}>
-                      {cabin.id || cabin.codigo}
-                    </option>
-                  ))}
+                  {cabinOptions.map((cabin: any) => {
+                    const value = normalizeCabinId(cabin.id || cabin.codigo || cabin.label) || (cabin.id || cabin.codigo);
+                    const label = cabin.label || cabin.codigo || cabin.id || value;
+                    return (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             </div>

@@ -3,7 +3,7 @@ import AppError from '../errors/AppError.js';
 import { comparePassword, hashPassword, validatePasswordStrength } from '../utils/password.js';
 import { signToken, signRefreshToken, verifyRefreshToken, setAuthCookie, clearAuthCookie, signPasswordResetToken, verifyToken } from '../utils/jwtHelper.js';
 import * as Users from '../models/userModel.js';
-import * as Audit from '../models/auditoriaModel.js';
+import { auditEvent } from '../middlewares/audit.js';
 import * as UserRoles from '../models/userRolModel.js';
 import crypto from 'crypto';
 
@@ -13,6 +13,12 @@ export const login = asyncHandler(async (req, res) => {
 
   const u = await Users.findByEmail(correo);
   if (!u) {
+    await auditEvent({
+      event: 'AUTH_LOGIN_FAIL',
+      actorEmail: correo,
+      ip: req.ip ?? null,
+      metadata: { reason: 'USER_NOT_FOUND' },
+    });
     return res.status(401).json({ ok: false, error: { code: 'BAD_CREDENTIALS', message: 'Credenciales inválidas' } });
   }
   if (u.locked_until && new Date(u.locked_until) > new Date()) {
@@ -22,7 +28,13 @@ export const login = asyncHandler(async (req, res) => {
   const ok = await comparePassword(password, u.password_hash);
   if (!ok) {
     await Users.recordFailedLogin(u.usuario_id);
-    await Audit.log({ usuario_id: u.usuario_id, accion: 'LOGIN_FAIL', detalles: { correo } });
+    await auditEvent({
+      event: 'AUTH_LOGIN_FAIL',
+      actorId: u.usuario_id,
+      actorEmail: correo,
+      ip: req.ip ?? null,
+      metadata: { reason: 'BAD_PASSWORD' },
+    });
     throw new AppError('Credenciales inválidas', { status: 401, code: 'BAD_CREDENTIALS' });
   }
 
@@ -51,7 +63,13 @@ export const login = asyncHandler(async (req, res) => {
   const token = signToken(tokenPayload);
   const refreshToken = signRefreshToken(tokenPayload);
   setAuthCookie(res, token, refreshToken);
-  await Audit.log({ usuario_id: u.usuario_id, accion: 'LOGIN', detalles: { correo } });
+  await auditEvent({
+    event: 'AUTH_LOGIN_SUCCESS',
+    actorId: u.usuario_id,
+    actorEmail: u.correo,
+    ip: req.ip ?? null,
+    metadata: { roles: userRoleNames },
+  });
 
   res.json({ 
     ok: true, 
@@ -70,7 +88,12 @@ export const me = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  await Audit.log({ usuario_id: req.user.id, accion: 'LOGOUT' });
+  await auditEvent({
+    event: 'AUTH_LOGOUT',
+    actorId: req.user.id ?? null,
+    actorEmail: req.user.email ?? null,
+    ip: req.ip ?? null,
+  });
   clearAuthCookie(res);
   res.json({ ok: true, data: { message: 'Sesión cerrada' } });
 });
@@ -191,10 +214,12 @@ export const changePassword = asyncHandler(async (req, res) => {
   // Establecer ambas cookies (access y refresh) para asegurar que se use el nuevo token
   setAuthCookie(res, newToken, newRefreshToken);
 
-  await Audit.log({ 
-    usuario_id: userId, 
-    accion: 'PASSWORD_CHANGED', 
-    detalles: { self_change: true } 
+  await auditEvent({
+    event: 'AUTH_PASSWORD_CHANGED',
+    actorId: userId,
+    actorEmail: updatedUser.correo,
+    ip: req.ip ?? null,
+    metadata: { selfChange: true },
   });
 
   res.json({ 
@@ -240,10 +265,12 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   // En entorno DEV, devolver el token en la respuesta (no en producción)
   if (process.env.NODE_ENV !== 'production') {
     const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
-    await Audit.log({ 
-      usuario_id: u.usuario_id, 
-      accion: 'PASSWORD_RESET_REQUESTED', 
-      detalles: { correo: emailToUse } 
+    await auditEvent({
+      event: 'AUTH_PASSWORD_RESET_REQUESTED',
+      actorId: u.usuario_id,
+      actorEmail: u.correo,
+      ip: req.ip ?? null,
+      metadata: { correo: emailToUse, mode: 'DEV_RESPONSE' },
     });
     
     return res.status(200).json({ 
@@ -260,10 +287,12 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   // En producción, aquí deberías enviar el email con el enlace
   // Ejemplo: await sendEmail(email, resetToken);
   
-  await Audit.log({ 
-    usuario_id: u.usuario_id, 
-    accion: 'PASSWORD_RESET_REQUESTED', 
-    detalles: { correo: emailToUse } 
+  await auditEvent({
+    event: 'AUTH_PASSWORD_RESET_REQUESTED',
+    actorId: u.usuario_id,
+    actorEmail: u.correo,
+    ip: req.ip ?? null,
+    metadata: { correo: emailToUse, mode: 'PROD_EMAIL' },
   });
 
   res.status(200).json({ 
@@ -343,10 +372,12 @@ export const resetPassword = asyncHandler(async (req, res) => {
   const newRefreshToken = signRefreshToken(tokenPayload);
   setAuthCookie(res, newToken, newRefreshToken);
 
-  await Audit.log({ 
-    usuario_id: u.usuario_id, 
-    accion: 'PASSWORD_RESET_COMPLETED', 
-    detalles: { via_token: true } 
+  await auditEvent({
+    event: 'AUTH_PASSWORD_RESET_COMPLETED',
+    actorId: u.usuario_id,
+    actorEmail: u.correo,
+    ip: req.ip ?? null,
+    metadata: { viaToken: true },
   });
 
   res.json({ ok: true, data: { message: 'Contraseña restablecida exitosamente' } });

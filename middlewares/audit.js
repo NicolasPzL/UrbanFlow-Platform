@@ -1,3 +1,60 @@
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { log as logToDatabase } from '../models/auditoriaModel.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const logsDir = path.resolve(__dirname, '../logs');
+const auditFile = path.join(logsDir, 'auditoria.log');
+
+function ensureLogDirectory() {
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+}
+
+function safeAppend(payload) {
+  try {
+    ensureLogDirectory();
+    fs.appendFileSync(auditFile, `${JSON.stringify(payload)}\n`, { encoding: 'utf8' });
+  } catch (err) {
+    console.warn('[AUDIT] No se pudo escribir en auditoria.log:', err.message);
+  }
+}
+
+/**
+ * Registra un evento de auditoría tanto en archivo como en base de datos.
+ * @param {Object} options
+ * @param {string} options.event - Código del evento (ej. AUTH_LOGIN, USER_CREATE)
+ * @param {number|null} [options.actorId] - ID del usuario que ejecuta la acción, si está disponible
+ * @param {string|null} [options.actorEmail] - Correo del actor
+ * @param {string|null} [options.ip] - Dirección IP de origen
+ * @param {Object} [options.metadata] - Información adicional serializable
+ */
+export async function auditEvent({ event, actorId = null, actorEmail = null, ip = null, metadata = {} }) {
+  const payload = {
+    event,
+    actorId,
+    actorEmail,
+    ip,
+    metadata,
+    at: new Date().toISOString(),
+  };
+
+  console.log('[AUDIT]', JSON.stringify(payload));
+  safeAppend(payload);
+
+  try {
+    await logToDatabase({
+      usuario_id: actorId,
+      accion: event,
+      detalles: { ...metadata, actorEmail, ip },
+    });
+  } catch (err) {
+    console.warn('[AUDIT] Error registrando en base de datos:', err.message);
+  }
+}
 // middlewares/audit.js - Versión simplificada para Semana 2
 // Solo registra en consola, sin base de datos
 

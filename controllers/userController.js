@@ -3,8 +3,8 @@ import AppError from '../errors/AppError.js';
 import * as Users from '../models/userModel.js';
 import * as UserRoles from '../models/userRolModel.js';
 import * as Roles from '../models/rolModel.js';
-import * as Audit from '../models/auditoriaModel.js';
 import { hashPassword, generateTemporaryPassword } from '../utils/password.js';
+import { auditEvent } from '../middlewares/audit.js';
 
 // Listado de usuarios (usado por routes/userRoutes.js -> GET /api/users)
 export const listUsers = asyncHandler(async (req, res) => {
@@ -67,7 +67,13 @@ export const createUser = asyncHandler(async (req, res) => {
   }
 
   const rolesAssigned = await UserRoles.getUserRoles(user.usuario_id);
-  await Audit.log({ usuario_id: req.user.id, accion: 'CREATE_USER', detalles: { usuario_id: user.usuario_id, roles: desiredRoles } });
+  await auditEvent({
+    event: 'USER_CREATE',
+    actorId: req.user.id ?? null,
+    actorEmail: req.user.email ?? null,
+    ip: req.ip ?? null,
+    metadata: { usuario_id: user.usuario_id, roles: desiredRoles },
+  });
   
   // Devolver la contraseña temporal SOLO UNA VEZ (no se guarda en ningún otro lugar)
   res.status(201).json({ 
@@ -125,7 +131,13 @@ export const updateUser = asyncHandler(async (req, res) => {
     }
   }
 
-  await Audit.log({ usuario_id: req.user.id, accion: 'UPDATE_USER', detalles: { usuario_id: req.params.id, cambios: req.body } });
+  await auditEvent({
+    event: 'USER_UPDATE',
+    actorId: req.user.id ?? null,
+    actorEmail: req.user.email ?? null,
+    ip: req.ip ?? null,
+    metadata: { usuario_id: req.params.id, cambios: req.body },
+  });
   res.json({ ok: true, data: updated });
 });
 
@@ -146,6 +158,12 @@ export const removeUser = asyncHandler(async (req, res) => {
   const removed = await Users.softDeleteUser(targetId);
   if (!removed) throw new AppError('No encontrado', { status: 404, code: 'NOT_FOUND' });
 
-  await Audit.log({ usuario_id: req.user.id, accion: 'DELETE_USER', detalles: { usuario_id: targetId } });
+  await auditEvent({
+    event: 'USER_DELETE',
+    actorId: req.user.id ?? null,
+    actorEmail: req.user.email ?? null,
+    ip: req.ip ?? null,
+    metadata: { usuario_id: targetId },
+  });
   res.json({ ok: true, data: removed });
 });
