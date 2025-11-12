@@ -72,6 +72,11 @@ const GeoportalMap = ({
   // Normaliza cabinas (asegurando coordenadas y valores numéricos válidos)
   const sanitizedCabins = useMemo<CabinData[]>(() => {
     return cabins.reduce<CabinData[]>((acc, cabin) => {
+      if (cabin.latitud === null || cabin.longitud === null) {
+        console.warn?.('[GeoportalMap] Cabina ignorada por coordenadas nulas', cabin);
+        return acc;
+      }
+
       const lat = Number(cabin.latitud);
       const lng = Number(cabin.longitud);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -96,6 +101,11 @@ const GeoportalMap = ({
   // Normaliza estaciones
   const sanitizedStations = useMemo<StationData[]>(() => {
     return stations.reduce<StationData[]>((acc, station) => {
+      if (station.latitud === null || station.longitud === null) {
+        console.warn?.('[GeoportalMap] Estación ignorada por coordenadas nulas', station);
+        return acc;
+      }
+
       const lat = Number(station.latitud);
       const lng = Number(station.longitud);
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -118,9 +128,17 @@ const GeoportalMap = ({
   // Helper function para obtener el status de una cabina
   const getCabinStatus = (cabin: CabinData): string => {
     if (cabin.status) return cabin.status;
-    if (cabin.estado_actual === 'operativo') return 'normal';
-    if (cabin.estado_actual === 'inusual') return 'warning';
-    return 'alert';
+    switch ((cabin.estado_actual || '').toLowerCase()) {
+      case 'operativo':
+      case 'operativa':
+        return 'normal';
+      case 'inusual':
+        return 'warning';
+      case 'alerta':
+        return 'alert';
+      default:
+        return 'unknown';
+    }
   };
 
   // Helper function para obtener el color de status
@@ -129,7 +147,8 @@ const GeoportalMap = ({
       case 'normal': return 'bg-green-500';
       case 'warning': return 'bg-yellow-500';
       case 'reaceleracion': return 'bg-orange-500';
-      case 'alert': default: return 'bg-red-500';
+      case 'alert': return 'bg-red-500';
+      default: return 'bg-gray-400';
     }
   };
 
@@ -158,8 +177,8 @@ const GeoportalMap = ({
       const effectivePoints = candidatePoints.length > 0 ? candidatePoints : sanitizedCabins;
       if (!effectivePoints.length) return;
 
-      const longitudes = effectivePoints.map((item) => item.longitud);
-      const latitudes = effectivePoints.map((item) => item.latitud);
+      const longitudes = effectivePoints.map((item) => Number(item.longitud));
+      const latitudes = effectivePoints.map((item) => Number(item.latitud));
       const minLng = Math.min(...longitudes);
       const maxLng = Math.max(...longitudes);
       const minLat = Math.min(...latitudes);
@@ -170,9 +189,9 @@ const GeoportalMap = ({
       }
 
       if (effectivePoints.length === 1) {
-        const point = effectivePoints[0];
+        const point = effectivePoints[0] as CabinData | StationData;
         map.flyTo({
-          center: [point.longitud, point.latitud],
+          center: [Number(point.longitud), Number(point.latitud)],
           zoom: Math.max(map.getZoom(), resolvedMode === '3d' ? 15 : 14),
           duration: 900,
         });
@@ -223,7 +242,7 @@ const GeoportalMap = ({
 
   const cabinMarkers = useMemo(() =>
     sanitizedCabins.map((cabin) => (
-      <Marker key={`cabin-${cabin.cabina_id}`} longitude={cabin.longitud} latitude={cabin.latitud}>
+      <Marker key={`cabin-${cabin.cabina_id}`} longitude={Number(cabin.longitud)} latitude={Number(cabin.latitud)}>
         <div onMouseEnter={() => setPopupInfo(cabin)} onMouseLeave={() => setPopupInfo(null)}>
           <CabinMarker cabin={cabin} showStatus={showSensitiveInfo} />
         </div>
@@ -232,7 +251,7 @@ const GeoportalMap = ({
 
   const stationMarkers = useMemo(() =>
     sanitizedStations.map((station) => (
-      <Marker key={`station-${station.estacion_id}`} longitude={station.longitud} latitude={station.latitud}>
+      <Marker key={`station-${station.estacion_id}`} longitude={Number(station.longitud)} latitude={Number(station.latitud)}>
         <div onMouseEnter={() => setPopupInfo(station)} onMouseLeave={() => setPopupInfo(null)}>
           <MapPin className="text-blue-600 w-8 h-8 drop-shadow-lg cursor-pointer transform hover:scale-110 transition-transform" />
         </div>
