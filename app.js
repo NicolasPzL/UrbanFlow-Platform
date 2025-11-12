@@ -27,6 +27,7 @@ import errorHandler from './middlewares/errorHandler.js';
 const { requireAuth, optionalAuth, requireRole } = auth;
 
 // Importar controladores (ya gestionados por routers dedicados)
+import * as userController from './controllers/userController.js';
 
 // Crear aplicación Express
 const app = express();
@@ -159,6 +160,7 @@ app.use('/api/auth', authRoutes);
 
 // Usuarios (CRUD canónico) - protegido a nivel de montaje
 app.use('/api/users', requireAuth, requireRole('admin'), userRoutes);
+app.patch('/api/admin/users/:id/restore', requireAuth, requireRole('admin'), userController.restoreUser);
 
 // Roles (CRUD) - protegido a nivel de montaje
 app.use('/api/roles', requireAuth, requireRole('admin'), roleRoutes);

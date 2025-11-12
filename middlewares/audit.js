@@ -33,23 +33,26 @@ function safeAppend(payload) {
  * @param {Object} [options.metadata] - Información adicional serializable
  */
 export async function auditEvent({ event, actorId = null, actorEmail = null, ip = null, metadata = {} }) {
-  const payload = {
+  const at = new Date().toISOString();
+  const metadataObject = metadata && typeof metadata === 'object' ? metadata : {};
+  const logPayload = {
     event,
+    actor: actorId,
     actorId,
     actorEmail,
     ip,
-    metadata,
-    at: new Date().toISOString(),
+    at,
+    ...metadataObject,
   };
 
-  console.log('[AUDIT]', JSON.stringify(payload));
-  safeAppend(payload);
+  console.log('[AUDIT]', JSON.stringify(logPayload));
+  safeAppend(logPayload);
 
   try {
     await logToDatabase({
       usuario_id: actorId,
       accion: event,
-      detalles: { ...metadata, actorEmail, ip },
+      detalles: { ...metadataObject, actor: actorId, actorEmail, ip, at },
     });
   } catch (err) {
     console.warn('[AUDIT] Error registrando en base de datos:', err.message);
