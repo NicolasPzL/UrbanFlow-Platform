@@ -3,16 +3,34 @@ import InteractiveMap from "./GeoportalMap";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Activity, MapPin, Users, Clock, RefreshCw, Wifi, WifiOff } from "lucide-react";
-import { MapMode } from "../types";
+import { MapPin, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import type { MapMode, CabinData, StationData } from "../types";
 import { MapModeToggle } from "./ui/MapModeToggle";
 
 type PublicMapData = {
   message?: string;
   timestamp?: string;
-  stations?: any[];
-  cabins?: any[];
-  stats?: { activeCabins?: number; totalPassengers?: number; avgETA?: string };
+  stations?: StationData[];
+  cabins?: CabinData[];
+  stats?: {
+    activeCabins?: number;
+    totalPassengers?: number | null;
+    avgETA?: string | null;
+    lastUpdate?: string | null;
+    systemStatus?: { level: string; label: string };
+  };
+};
+
+const formatTime = (isoDate?: string | null) => {
+  if (!isoDate) return "--:--";
+  try {
+    return new Date(isoDate).toLocaleTimeString("es-CO", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "--:--";
+  }
 };
 
 export function PublicGeoportal() {
@@ -59,8 +77,10 @@ export function PublicGeoportal() {
   }, [fetchData]);
 
   const activeCabins = data?.stats?.activeCabins ?? 0;
-  const totalPassengers = data?.stats?.totalPassengers ?? 0;
-  const avgETA = data?.stats?.avgETA ?? "--:--";
+  const totalPassengers = data?.stats?.totalPassengers ?? null;
+  const avgETA = data?.stats?.avgETA ?? null;
+  const systemStatus = data?.stats?.systemStatus ?? { level: 'unknown', label: 'Sin datos' };
+  const cabinsCount = data?.cabins?.length ?? 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -89,9 +109,6 @@ export function PublicGeoportal() {
               </Button>
             </div>
           </div>
-          <div className="flex justify-center">
-            <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
-          </div>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto">
             Monitorea en tiempo real el estado de nuestro sistema de transporte por cable aéreo. 
             Consulta ubicaciones, tiempos estimados y ocupación de las cabinas.
@@ -101,74 +118,42 @@ export function PublicGeoportal() {
               Última actualización: {lastUpdate.toLocaleTimeString()}
             </p>
           )}
-        </div>
-
-        {/* Status Cards */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Sistema</CardTitle>
-              <Activity className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center space-x-2">
-                <Badge variant="default" className="bg-green-500">
-                  Operativo
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Funcionamiento normal
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Cabinas Activas</CardTitle>
-              <MapPin className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{activeCabins}</div>
-              <p className="text-xs text-muted-foreground">
-                cabinas activas
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Pasajeros Actuales</CardTitle>
-              <Users className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{totalPassengers}</div>
-              <p className="text-xs text-muted-foreground">
-                en el sistema
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Tiempo Promedio</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{avgETA}</div>
-              <p className="text-xs text-muted-foreground">
-                próxima llegada
-              </p>
-            </CardContent>
-          </Card>
+          <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-600">
+            <div>
+              <span className="font-semibold text-gray-900">{systemStatus.label}</span>
+              <span className="ml-2 text-gray-500">Estado general del sistema</span>
+            </div>
+            <div>
+              Cabinas activas: <span className="font-semibold text-gray-900">{activeCabins}</span>
+            </div>
+            <div>
+              Pasajeros registrados:{" "}
+              <span className="font-semibold text-gray-900">
+                {totalPassengers === null ? "--" : totalPassengers}
+              </span>
+            </div>
+            <div>
+              ETA promedio:{" "}
+              <span className="font-semibold text-gray-900">{avgETA ?? "--:--"}</span>
+            </div>
+          </div>
         </div>
 
         {/* Interactive Map */}
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <MapPin className="h-5 w-5" />
-              <span>Mapa en Tiempo Real</span>
-            </CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <CardTitle className="flex items-center space-x-2">
+                <MapPin className="h-5 w-5" />
+                <span>Mapa en Tiempo Real</span>
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
+                <Badge variant="outline">
+                  {cabinsCount} {cabinsCount === 1 ? "cabina" : "cabinas"}
+                </Badge>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -189,56 +174,49 @@ export function PublicGeoportal() {
           </CardContent>
         </Card>
 
-        {/* Instructions */}
+        {/* Información adicional */}
         <Card>
           <CardHeader>
-            <CardTitle>Cómo usar el Geoportal</CardTitle>
+            <CardTitle>¿Cómo aprovechar el geoportal?</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid md:grid-cols-2 gap-6">
+          <CardContent className="space-y-4 text-sm text-gray-600">
+            <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-3">
-                <h4 className="font-medium text-gray-900">Interacciones disponibles:</h4>
-                <ul className="space-y-2 text-sm text-gray-600">
-                  <li className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Pasa el cursor sobre las cabinas para ver detalles</span>
+                <h4 className="font-medium text-gray-900">Consejos rápidos:</h4>
+                <ul className="space-y-2">
+                  <li className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Usa los controles del mapa para acercarte a estaciones o cabinas.
                   </li>
-                  <li className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Observa el estado de cada cabina por colores</span>
+                  <li className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Cambia entre vista 2D y 3D para explorar el relieve de la ruta.
                   </li>
-                  <li className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span>Consulta tiempos estimados y ocupación</span>
+                  <li className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-blue-500" />
+                    Revisa la hora de actualización para conocer la frescura de los datos.
                   </li>
                 </ul>
               </div>
-              
+
               <div className="space-y-3">
-                <h4 className="font-medium text-gray-900">Estados del sistema:</h4>
+                <h4 className="font-medium text-gray-900">Indicadores generales:</h4>
                 <div className="space-y-2">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                    <span className="text-sm text-gray-600">Normal - Funcionamiento óptimo</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <span className="text-sm text-gray-600">Alerta - Atención requerida</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <span className="text-sm text-gray-600">Crítico - Mantenimiento necesario</span>
-                  </div>
+                  <p>
+                    <span className="font-semibold text-gray-900">Operativo:</span> servicio funcionando con normalidad.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-gray-900">Alerta:</span> posible incidencia, monitoreo reforzado.
+                  </p>
+                  <p>
+                    <span className="font-semibold text-gray-900">Crítico:</span> intervención o cierre temporal.
+                  </p>
                 </div>
               </div>
             </div>
-            
-            <div className="bg-blue-50 p-4 rounded-lg">
-              <p className="text-sm text-blue-800">
-                <strong>Nota:</strong> Los datos se actualizan cada segundo mediante sensores IoT 
-                instalados en cada cabina. Para acceder a funciones avanzadas de monitoreo y 
-                análisis, inicia sesión como operador o administrador.
-              </p>
+
+            <div className="rounded-lg bg-blue-50 p-4 text-blue-900">
+              Para acceder a reportes técnicos, historial y métricas detalladas inicia sesión como operador o administrador.
             </div>
           </CardContent>
         </Card>
