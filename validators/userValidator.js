@@ -15,20 +15,13 @@ function booleanOrUndefined(v) {
 }
 
 export function validateCreateUser(req, res, next) {
-  const { nombre, correo, password, passwordHash, rol, roles, mustChangePassword } = req.body || {};
+  const { nombre, correo, rol, roles } = req.body || {};
 
   const errors = [];
   if (!nonEmptyString(nombre)) errors.push('nombre es requerido');
   if (!isEmail(correo)) errors.push('correo debe ser un email válido');
 
-  // Se requiere password en texto plano o passwordHash
-  if (!nonEmptyString(password) && !nonEmptyString(passwordHash)) {
-    errors.push('Se requiere password o passwordHash');
-  }
-
-  if (mustChangePassword !== undefined && typeof mustChangePassword !== 'boolean') {
-    errors.push('mustChangePassword debe ser boolean');
-  }
+  // Ya NO se requiere password - se genera automáticamente
 
   // roles puede venir como array, y rol puede venir como string o array
   const isStringArray = (arr) => Array.isArray(arr) && arr.every((v) => typeof v === 'string' && v.trim().length > 0);

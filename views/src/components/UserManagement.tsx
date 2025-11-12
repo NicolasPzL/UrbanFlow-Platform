@@ -51,6 +51,9 @@ export function UserManagement() {
   const [newUserRoles, setNewUserRoles] = useState<UserRole[]>(["operador"]);
   // Multi-rol: edición
   const [editUserRoles, setEditUserRoles] = useState<UserRole[]>([]);
+  // Contraseña temporal generada
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
+  const [showPasswordBanner, setShowPasswordBanner] = useState(false);
 
   // Cargar usuarios desde backend (requiere admin)
   useEffect(() => {
@@ -97,7 +100,7 @@ export function UserManagement() {
           correo: newUser.email,
           rol: (newUserRoles[0] ?? newUser.rol),
           roles: mapUiArrayToBackend(newUserRoles),
-          password: 'Usuario123!',
+          // NO se envía password - se genera automáticamente en el backend
         }),
       });
 
@@ -121,9 +124,21 @@ export function UserManagement() {
       };
 
       setUsers([...users, mapped]);
-      setNewUser({ name: '', email: '', rol: 'operador', status: 'active' });
-      setNewUserRoles(["operador"]);
-      setIsCreateModalOpen(false);
+
+      // Si hay contraseña temporal, mostrarla y NO cerrar el modal
+      if (u.temporaryPassword) {
+        setTemporaryPassword(u.temporaryPassword);
+        setShowPasswordBanner(true);
+        // Limpiar formulario pero mantener modal abierto
+        setNewUser({ name: '', email: '', rol: 'operador', status: 'active' });
+        setNewUserRoles(["operador"]);
+        // NO cerrar el modal aquí - se cerrará cuando el usuario cierre el banner
+      } else {
+        // Si no hay contraseña temporal, cerrar normalmente
+        setNewUser({ name: '', email: '', rol: 'operador', status: 'active' });
+        setNewUserRoles(["operador"]);
+        setIsCreateModalOpen(false);
+      }
     } catch (e) {
       console.error('Error creando usuario:', e);
       alert('Error creando usuario');
@@ -248,66 +263,124 @@ export function UserManagement() {
                 <DialogHeader>
                   <DialogTitle>Crear Nuevo Usuario</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">Nombre Completo</Label>
-                    <Input
-                      id="name"
-                      value={newUser.name}
-                      onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                      placeholder="Ej. Juan Pérez"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="email">Correo Electrónico</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                      placeholder="juan.perez@urbanflow.com"
-                    />
-                  </div>
-                  <div>
-                    <Label>Roles</Label>
-                    <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {(["operador", "analista", "cliente", "admin"] as UserRole[]).map(r => (
-                        <label key={r} className="flex items-center space-x-2">
-                          <Checkbox
-                            checked={newUserRoles.includes(r)}
-                            onCheckedChange={(checked: boolean | 'indeterminate') => {
-                              const c = Boolean(checked);
-                              setNewUserRoles(prev => c ? Array.from(new Set([...prev, r])) : prev.filter(x => x !== r));
-                              if (c && newUser.rol !== r) setNewUser({ ...newUser, rol: r });
-                            }}
-                          />
-                          <span>{r === 'admin' ? 'Administrador' : r.charAt(0).toUpperCase() + r.slice(1)}</span>
-                        </label>
-                      ))}
+                {showPasswordBanner && temporaryPassword ? (
+                  <div className="space-y-4">
+                    <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-6">
+                      <div className="flex items-start">
+                        <div className="flex-shrink-0">
+                          <svg className="h-6 w-6 text-yellow-600" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3 flex-1">
+                          <h3 className="text-lg font-bold text-yellow-900 mb-3">
+                            ✅ Usuario Creado Exitosamente
+                          </h3>
+                          <div className="mt-2 text-sm text-yellow-800">
+                            <p className="mb-3 font-semibold">La contraseña temporal para este usuario es:</p>
+                            <div className="bg-yellow-100 border-2 border-yellow-300 p-4 rounded font-mono text-xl font-bold break-all text-center tracking-wider">
+                              {temporaryPassword}
+                            </div>
+                            <div className="mt-4 space-y-2">
+                              <p className="font-semibold text-yellow-900">⚠️ IMPORTANTE:</p>
+                              <ul className="list-disc list-inside space-y-1 text-yellow-800">
+                                <li>Guarda esta contraseña de forma segura</li>
+                                <li>No se mostrará nuevamente</li>
+                                <li>Comunícasela al usuario de forma segura</li>
+                                <li>El usuario deberá cambiarla en su primer inicio de sesión</li>
+                              </ul>
+                            </div>
+                          </div>
+                          <div className="mt-4">
+                            <Button
+                              className="w-full"
+                              onClick={() => {
+                                setShowPasswordBanner(false);
+                                setTemporaryPassword(null);
+                                setIsCreateModalOpen(false);
+                              }}
+                            >
+                              Cerrar y Continuar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-1">El primer rol marcado será el rol primario del usuario.</p>
                   </div>
-                  <div>
-                    <Label htmlFor="status">Estado</Label>
-                    <Select value={newUser.status} onValueChange={(value: UserStatus | string) => setNewUser({ ...newUser, status: value })}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Activo</SelectItem>
-                        <SelectItem value="inactive">Inactivo</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleCreateUser}>
-                    Crear Usuario
-                  </Button>
-                </DialogFooter>
+                ) : (
+                  <>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="name">Nombre Completo</Label>
+                        <Input
+                          id="name"
+                          value={newUser.name}
+                          onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                          placeholder="Ej. Juan Pérez"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="email">Correo Electrónico</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={newUser.email}
+                          onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                          placeholder="juan.perez@urbanflow.com"
+                        />
+                      </div>
+                      <div>
+                        <Label>Roles</Label>
+                        <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                          {(["operador", "analista", "cliente", "admin"] as UserRole[]).map(r => (
+                            <label key={r} className="flex items-center space-x-2">
+                              <Checkbox
+                                checked={newUserRoles.includes(r)}
+                                onCheckedChange={(checked: boolean | 'indeterminate') => {
+                                  const c = Boolean(checked);
+                                  setNewUserRoles(prev => c ? Array.from(new Set([...prev, r])) : prev.filter(x => x !== r));
+                                  if (c && newUser.rol !== r) setNewUser({ ...newUser, rol: r });
+                                }}
+                              />
+                              <span>{r === 'admin' ? 'Administrador' : r.charAt(0).toUpperCase() + r.slice(1)}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">El primer rol marcado será el rol primario del usuario.</p>
+                      </div>
+                      <div>
+                        <Label htmlFor="status">Estado</Label>
+                        <Select value={newUser.status} onValueChange={(value: UserStatus | string) => setNewUser({ ...newUser, status: value })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="active">Activo</SelectItem>
+                            <SelectItem value="inactive">Inactivo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+                        <p className="text-sm text-blue-800">
+                          <strong>Nota:</strong> Se generará automáticamente una contraseña temporal segura para el usuario. 
+                          Se mostrará una sola vez después de crear el usuario.
+                        </p>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => {
+                        setIsCreateModalOpen(false);
+                        setShowPasswordBanner(false);
+                        setTemporaryPassword(null);
+                      }}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleCreateUser}>
+                        Crear Usuario
+                      </Button>
+                    </DialogFooter>
+                  </>
+                )}
               </DialogContent>
             </Dialog>
           </div>

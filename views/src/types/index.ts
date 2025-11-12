@@ -11,20 +11,25 @@ export interface User {
 export interface CabinData {
   cabina_id: number;
   codigo_interno: string;
-  estado_actual: 'operativo' | 'inusual' | 'alerta';
-  status?: 'normal' | 'warning' | 'alert'; // mapped version
-  latitud: number;
-  longitud: number;
-  velocidad: number;
-  timestamp?: string;
+  estado_actual: string;
+  status?: 'normal' | 'warning' | 'alert' | 'unknown';
+  latitud: number | null;
+  longitud: number | null;
+  velocidad: number | null;
+  altitud?: number | null;
+  rms?: number | null;
+  sensor_id?: number | null;
+  estado_procesado?: string | null;
+  timestamp?: string | null;
+  last_update?: string | null;
 }
 
 export interface StationData {
   estacion_id: number;
   nombre: string;
   tipo: string;
-  latitud: number;
-  longitud: number;
+  latitud: number | null;
+  longitud: number | null;
 }
 
 // Legacy types for mock data (keeping for compatibility)
@@ -68,3 +73,5 @@ export type AuthState = {
 };
 
 export type AppView = 'landing' | 'geoportal-public' | 'dashboard' | 'geoportal-detail' | 'user-management' | 'citizen-dashboard';
+
+export type MapMode = '2d' | '3d';

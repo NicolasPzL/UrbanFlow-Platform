@@ -1,78 +1,123 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import InteractiveMap from "./GeoportalMap";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-// Datos ahora vienen del backend público /api/map/public
-import { Filter, MapPin, Activity, Users, Eye } from "lucide-react";
-import { AuthState } from "../types";
+import { Filter, MapPin, Activity, Users, Eye, Compass, AlertTriangle } from "lucide-react";
+import { AuthState, MapMode, CabinData, StationData } from "../types";
+import { MapModeToggle } from "./ui/MapModeToggle";
 
 interface DetailedGeoportalProps {
   authState?: AuthState;
 }
 
+type PrivateStats = {
+  activeCabins?: number;
+  avgVelocity?: number | null;
+  totalPassengers?: number | null;
+  avgETA?: string | null;
+  lastUpdate?: string | null;
+  systemStatus?: { level: string; label: string };
+};
+
+type PrivateResponse = {
+  stations: StationData[];
+  cabins: CabinData[];
+  stats: PrivateStats;
+};
+
+const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "destructive"> = {
+  normal: "default",
+  warning: "secondary",
+  alert: "destructive",
+  unknown: "secondary",
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  normal: "Operativo",
+  warning: "Alerta",
+  alert: "Crítico",
+  unknown: "Sin estado",
+};
+
+const formatNumber = (value: number | null | undefined, digits = 1) => {
+  if (value === null || value === undefined || Number.isNaN(value)) return "--";
+  return value.toLocaleString("es-CO", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
+
+const formatTime = (isoDate?: string | null) => {
+  if (!isoDate) return "--:--";
+  try {
+    return new Date(isoDate).toLocaleTimeString("es-CO", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "--:--";
+  }
+};
+
 export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
   const [filteredStatus, setFilteredStatus] = useState<string>("all");
   const [selectedView, setSelectedView] = useState<string>("overview");
-  const [stations, setStations] = useState<any[]>([]);
-  const [cabins, setCabins] = useState<any[]>([]);
+  const [stations, setStations] = useState<StationData[]>([]);
+  const [cabins, setCabins] = useState<CabinData[]>([]);
+  const [stats, setStats] = useState<PrivateStats>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mapMode, setMapMode] = useState<MapMode>("2d");
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const resp = await fetch('/api/map/public', { credentials: 'include' });
-        if (!resp.ok) throw new Error('No se pudo cargar el geoportal detallado');
+        const resp = await fetch("/api/map/private", { credentials: "include" });
+        if (!resp.ok) throw new Error("No se pudo cargar el geoportal detallado");
         const json = await resp.json();
-        setStations(Array.isArray(json?.data?.stations) ? json.data.stations : []);
-        setCabins(Array.isArray(json?.data?.cabins) ? json.data.cabins : []);
+        const payload: PrivateResponse = json?.data ?? { stations: [], cabins: [], stats: {} };
+
+        setStations(Array.isArray(payload?.stations) ? payload.stations : []);
+        setCabins(Array.isArray(payload?.cabins) ? payload.cabins : []);
+        setStats(payload?.stats ?? {});
         setError(null);
       } catch (e: any) {
-        setError(e?.message || 'Error al cargar');
+        setError(e?.message || "Error al cargar");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData(); // Carga inicial
-    
-    // Actualizar datos cada 5 segundos
+    fetchData();
     const interval = setInterval(fetchData, 5000);
-    
     return () => clearInterval(interval);
   }, []);
 
   const filteredCabins = filteredStatus === "all"
     ? cabins
-    : cabins.filter((c: any) => {
-        const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
-                                   c.estado_actual === 'inusual' ? 'warning' : 'alert');
-        return status === filteredStatus;
-      });
+    : cabins.filter((cabin) => (cabin.status ?? "unknown") === filteredStatus);
 
-  const statusCounts = {
-    normal: cabins.filter((c: any) => {
-      const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
-                                 c.estado_actual === 'inusual' ? 'warning' : 'alert');
-      return status === 'normal';
-    }).length,
-    warning: cabins.filter((c: any) => {
-      const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
-                                 c.estado_actual === 'inusual' ? 'warning' : 'alert');
-      return status === 'warning';
-    }).length,
-    alert: cabins.filter((c: any) => {
-      const status = c.status || (c.estado_actual === 'operativo' ? 'normal' : 
-                                 c.estado_actual === 'inusual' ? 'warning' : 'alert');
-      return status === 'alert';
-    }).length,
-  };
+  const statusCounts = useMemo(() => ({
+    normal: cabins.filter((cabin) => (cabin.status ?? "unknown") === "normal").length,
+    warning: cabins.filter((cabin) => (cabin.status ?? "unknown") === "warning").length,
+    alert: cabins.filter((cabin) => (cabin.status ?? "unknown") === "alert").length,
+    unknown: cabins.filter((cabin) => (cabin.status ?? "unknown") === "unknown").length,
+  }), [cabins]);
 
-  const totalPassengers = 0; // Placeholder - no tenemos datos de pasajeros en la BD
-  const avgVibration = '0.00'; // Placeholder - no tenemos datos de vibración en la BD
-  const avgVelocity = cabins.length ? (cabins.reduce((s: number, c: any) => s + (c.velocidad || 0), 0) / cabins.length).toFixed(1) : '0.0';
+  const avgRms = useMemo(() => {
+    const values = cabins
+      .map((cabin) => cabin.rms)
+      .filter((value): value is number => value !== null && value !== undefined && Number.isFinite(value));
+    if (!values.length) return null;
+    const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+    return Number(average.toFixed(2));
+  }, [cabins]);
+
+  const totalPassengers = stats.totalPassengers ?? null;
+  const avgVelocity = stats.avgVelocity ?? null;
+  const avgETA = stats.avgETA ?? null;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -81,16 +126,16 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              {authState?.user?.rol === 'cliente' ? 'Geoportal Urban Flow' : 'Geoportal Detallado'}
+              {authState?.user?.rol === "cliente" ? "Geoportal Urban Flow" : "Geoportal Detallado"}
             </h1>
             <p className="text-gray-600 mt-2">
-              {authState?.user?.rol === 'cliente' 
-                ? 'Monitorea en tiempo real la ubicación y estado de las cabinas del sistema'
-                : 'Vista avanzada del sistema con datos técnicos y controles operacionales'}
+              {authState?.user?.rol === "cliente"
+                ? "Monitorea en tiempo real la ubicación y estado de las cabinas del sistema"
+                : "Vista avanzada del sistema con datos técnicos y controles operacionales"}
             </p>
           </div>
-          
-          {authState?.user?.rol !== 'cliente' && (
+
+          {authState?.user?.rol !== "cliente" && (
             <div className="flex flex-col sm:flex-row gap-4 mt-4 lg:mt-0">
               <Select value={filteredStatus} onValueChange={setFilteredStatus}>
                 <SelectTrigger className="w-48">
@@ -102,9 +147,10 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
                   <SelectItem value="normal">Operativo</SelectItem>
                   <SelectItem value="warning">Alerta</SelectItem>
                   <SelectItem value="alert">Crítico</SelectItem>
+                  <SelectItem value="unknown">Sin estado</SelectItem>
                 </SelectContent>
               </Select>
-              
+
               <Select value={selectedView} onValueChange={setSelectedView}>
                 <SelectTrigger className="w-48">
                   <Eye className="h-4 w-4 mr-2" />
@@ -121,12 +167,12 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         </div>
 
         {/* System Overview Cards */}
-        {authState?.user?.rol !== 'cliente' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {authState?.user?.rol !== "cliente" && (
+          <div className="grid grid-cols-1 gap-6 mb-8 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Estado Operativo</CardTitle>
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <div className="h-3 w-3 rounded-full bg-green-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{statusCounts.normal}</div>
@@ -139,7 +185,7 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">En Alerta</CardTitle>
-                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <div className="h-3 w-3 rounded-full bg-yellow-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{statusCounts.warning}</div>
@@ -152,7 +198,7 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Estado Crítico</CardTitle>
-                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                <div className="h-3 w-3 rounded-full bg-red-500" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{statusCounts.alert}</div>
@@ -164,13 +210,13 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
 
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Carga del Sistema</CardTitle>
-                <Users className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium">Cabinas sin estado</CardTitle>
+                <AlertTriangle className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{totalPassengers}</div>
+                <div className="text-2xl font-bold">{statusCounts.unknown}</div>
                 <p className="text-xs text-muted-foreground">
-                  pasajeros totales
+                  requieren revisión de sensor
                 </p>
               </CardContent>
             </Card>
@@ -180,36 +226,45 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         {/* Interactive Map */}
         <Card className="mb-8">
           <CardHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle className="flex items-center space-x-2">
                 <MapPin className="h-5 w-5" />
                 <span>Mapa Operacional Detallado</span>
               </CardTitle>
-              <Badge variant="outline">
-                {filteredCabins.length} de {cabins.length} cabinas mostradas
-              </Badge>
+              <div className="flex items-center gap-3">
+                <MapModeToggle mode={mapMode} onModeChange={setMapMode} />
+                <Badge variant="outline">
+                  {filteredCabins.length} de {cabins.length} cabinas mostradas
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="h-96 w-full flex items-center justify-center text-sm text-gray-500">Cargando mapa...</div>
+              <div className="flex h-96 w-full items-center justify-center text-sm text-gray-500">
+                Cargando mapa...
+              </div>
             ) : error ? (
-              <div className="h-96 w-full flex items-center justify-center text-sm text-red-600">{error}</div>
+              <div className="flex h-96 w-full items-center justify-center text-sm text-red-600">
+                {error}
+              </div>
             ) : (
               <InteractiveMap
                 cabins={filteredCabins}
                 stations={stations}
                 isPublic={false}
-                showSensitiveInfo={authState?.user?.rol !== 'cliente'}
+                showSensitiveInfo={authState?.user?.rol !== "cliente"}
                 className="h-96 w-full"
+                mode={mapMode}
+                autoFocus="stations"
               />
             )}
           </CardContent>
         </Card>
 
         {/* Technical Parameters - Solo para usuarios con permisos */}
-        {authState?.user?.rol !== 'cliente' && (
-          <div className="grid lg:grid-cols-2 gap-6 mb-8">
+        {authState?.user?.rol !== "cliente" && (
+          <div className="mb-8 grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
@@ -219,16 +274,20 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="rounded-lg bg-gray-50 p-4">
                     <div className="text-sm text-gray-600">Vibración Promedio</div>
-                    <div className="text-2xl font-bold">{avgVibration} RMS</div>
+                    <div className="text-2xl font-bold">
+                      {avgRms === null ? "--" : `${formatNumber(avgRms, 2)} RMS`}
+                    </div>
                   </div>
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="rounded-lg bg-gray-50 p-4">
                     <div className="text-sm text-gray-600">Velocidad Promedio</div>
-                    <div className="text-2xl font-bold">{avgVelocity} m/s</div>
+                    <div className="text-2xl font-bold">
+                      {avgVelocity === null ? "--" : `${formatNumber(avgVelocity, 1)} m/s`}
+                    </div>
                   </div>
                 </div>
-                
+
                 <div className="space-y-3">
                   <h4 className="font-medium">Rangos Operacionales:</h4>
                   <div className="space-y-2 text-sm">
@@ -268,13 +327,13 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
                     Vista Histórica
                   </Button>
                 </div>
-                
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-medium text-blue-900 mb-2">Información del Sistema</h4>
-                  <div className="text-sm text-blue-800 space-y-1">
-                    <div>Última actualización: hace 2 segundos</div>
-                    <div>Frecuencia de muestreo: 1 Hz</div>
-                    <div>Sensores activos: 15/15</div>
+
+                <div className="rounded-lg bg-blue-50 p-4">
+                  <h4 className="mb-2 font-medium text-blue-900">Información del Sistema</h4>
+                  <div className="space-y-1 text-sm text-blue-800">
+                    <div>Última actualización: {formatTime(stats.lastUpdate)}</div>
+                    <div>Cabinas monitoreadas: {stats.activeCabins ?? 0}</div>
+                    <div>Sensores con datos recientes: {cabins.filter((c) => c.last_update).length}</div>
                   </div>
                 </div>
               </CardContent>
@@ -284,71 +343,91 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
 
         {/* Detailed Cabin List */}
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Detalles de Cabinas</CardTitle>
+            <Badge variant="outline">{filteredCabins.length} resultados</Badge>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
               {filteredCabins.map((cabin) => {
-                const status = cabin.status || (cabin.estado_actual === 'operativo' ? 'normal' : 
-                                               cabin.estado_actual === 'inusual' ? 'warning' : 'alert');
+                const status = cabin.status ?? "unknown";
                 return (
-                  <div key={cabin.cabina_id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-3">
-                        <h4 className="font-medium">Cabina {cabin.codigo_interno}</h4>
-                        {authState?.user?.rol !== 'cliente' && (
-                          <Badge 
-                            variant={status === 'normal' ? 'default' : 
-                                    status === 'warning' ? 'secondary' : 'destructive'}
-                          >
-                            {status === 'normal' ? 'Operativo' : 
-                             status === 'warning' ? 'Alerta' : 'Crítico'}
+                  <div
+                    key={cabin.cabina_id}
+                    className="border rounded-lg p-4 shadow-sm transition hover:shadow-md"
+                  >
+                    <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <h4 className="text-lg font-semibold text-gray-900">
+                            Cabina {cabin.codigo_interno}
+                          </h4>
+                          <Badge variant={STATUS_BADGE_VARIANT[status] ?? "secondary"}>
+                            {STATUS_LABEL[status] ?? STATUS_LABEL.unknown}
                           </Badge>
-                        )}
-                      </div>
-                      
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div>
-                          <span className="text-gray-600">Posición:</span>
-                          <div className="font-medium">
-                            {cabin.latitud.toFixed(4)}, {cabin.longitud.toFixed(4)}
+                        </div>
+
+                        <div className="grid gap-4 text-sm text-gray-600 md:grid-cols-4">
+                          <div>
+                            <span className="block text-xs uppercase text-gray-500">Posición</span>
+                            <span className="font-medium text-gray-900">
+                              {cabin.latitud === null || cabin.longitud === null
+                                ? "--"
+                                : `${formatNumber(cabin.latitud, 4)}°, ${formatNumber(cabin.longitud, 4)}°`}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-xs uppercase text-gray-500">Velocidad</span>
+                            <span className="font-medium text-gray-900">
+                              {cabin.velocidad === null ? "--" : `${formatNumber(cabin.velocidad)} m/s`}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-xs uppercase text-gray-500">Altitud</span>
+                            <span className="font-medium text-gray-900">
+                              {cabin.altitud === null ? "--" : `${formatNumber(cabin.altitud)} m`}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="block text-xs uppercase text-gray-500">Vibración RMS</span>
+                            <span className="font-medium text-gray-900">
+                              {cabin.rms === null ? "--" : `${formatNumber(cabin.rms, 2)} RMS`}
+                            </span>
                           </div>
                         </div>
-                        <div>
-                          <span className="text-gray-600">Velocidad:</span>
-                          <div className="font-medium">{cabin.velocidad} m/s</div>
+
+                        <div className="grid gap-2 text-sm text-gray-600 md:grid-cols-2">
+                          <div>
+                            <strong>Estado:</strong>{" "}
+                            <span className="capitalize">{cabin.estado_actual ?? "Sin información"}</span>
+                          </div>
+                          <div>
+                            <strong>Clasificación IA:</strong>{" "}
+                            <span className="capitalize">
+                              {cabin.estado_procesado ?? "Sin análisis"}
+                            </span>
+                          </div>
                         </div>
-                        {authState?.user?.rol !== 'cliente' && (
-                          <>
-                            <div>
-                              <span className="text-gray-600">Vibración:</span>
-                              <div className="font-medium">N/A</div>
-                            </div>
-                            <div>
-                              <span className="text-gray-600">Pasajeros:</span>
-                              <div className="font-medium">N/A</div>
-                            </div>
-                          </>
-                        )}
+
+                        <div className="text-xs text-gray-500">
+                          Última medición: {formatTime(cabin.last_update)}
+                        </div>
                       </div>
-                      
-                      {authState?.user?.rol !== 'cliente' && (
-                        <div className="text-sm text-gray-600">
-                          <strong>Estado:</strong> {cabin.estado_actual}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="text-right">
-                      <div className="text-sm text-gray-600">ETA</div>
-                      <div className="font-medium">N/A</div>
+
+                      <div className="min-w-[120px] text-right">
+                        <div className="text-sm text-gray-600">ETA estimada</div>
+                        <div className="font-medium">{avgETA ?? "N/A"}</div>
+                      </div>
                     </div>
                   </div>
-                </div>
                 );
               })}
+
+              {!filteredCabins.length && (
+                <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                  No hay cabinas que coincidan con el filtro seleccionado.
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

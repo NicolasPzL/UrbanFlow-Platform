@@ -1,7 +1,7 @@
 import { asyncHandler } from '../middlewares/asyncHandler.js';
 import AppError from '../errors/AppError.js';
 import * as Roles from '../models/rolModel.js';
-import * as Audit from '../models/auditoriaModel.js';
+import { auditEvent } from '../middlewares/audit.js';
 
 // Roles predefinidos según el documento
 const PREDEFINED_ROLES = {
@@ -56,10 +56,12 @@ export const update = asyncHandler(async (req, res) => {
   }
   
   const updatedRole = await Roles.updateRole(id, { descripcion }); // Solo permitir cambiar descripción
-  await Audit.log({ 
-    usuario_id: req.user.id, 
-    accion: 'UPDATE_ROLE', 
-    detalles: { rol_id: id, cambios: req.body } 
+  await auditEvent({
+    event: 'ROLE_UPDATE',
+    actorId: req.user.id ?? null,
+    actorEmail: req.user.email ?? null,
+    ip: req.ip ?? null,
+    metadata: { rol_id: id, cambios: req.body },
   });
   
   res.json({ ok: true, data: updatedRole });
@@ -80,10 +82,12 @@ export const softDelete = asyncHandler(async (req, res) => {
   }
   
   const deletedRole = await Roles.softDeleteRole(id);
-  await Audit.log({ 
-    usuario_id: req.user.id, 
-    accion: 'DELETE_ROLE', 
-    detalles: { rol_id: id } 
+  await auditEvent({
+    event: 'ROLE_DELETE',
+    actorId: req.user.id ?? null,
+    actorEmail: req.user.email ?? null,
+    ip: req.ip ?? null,
+    metadata: { rol_id: id },
   });
   
   res.json({ ok: true, data: deletedRole });

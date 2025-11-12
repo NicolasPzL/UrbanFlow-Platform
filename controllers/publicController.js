@@ -1,27 +1,34 @@
-// controllers/publicController.js
 import { asyncHandler } from '../middlewares/asyncHandler.js';
-import { getPublicData } from '../models/geoportalModel.js';
+import { getCitizenMapData, getPrivilegedMapData } from '../models/geoportalModel.js';
 
-export const publicMap = asyncHandler(async (_req, res, next) => {
-  // Llamamos al modelo para obtener los datos reales de la base de datos.
-  const mapData = await getPublicData();
+export const publicMap = asyncHandler(async (_req, res) => {
+  const { stations, cabins, stats } = await getCitizenMapData();
 
-  // Usamos los datos reales para construir la respuesta.
-  const data = {
-    message: 'Datos del geoportal público cargados exitosamente.',
-    timestamp: new Date().toISOString(),
-    stations: mapData.stations, // Dato real desde la BD
-    cabins: mapData.cabins,     // Dato real desde la BD
-    stats: {
-      activeCabins: mapData.cabins.length, // Conteo real de cabinas
-      totalPassengers: 0, // Placeholder
-      avgETA: '--:--',      // Placeholder
-      lastUpdate: new Date().toISOString(),
+  res.json({
+    ok: true,
+    data: {
+      message: 'Datos del geoportal público cargados exitosamente.',
+      timestamp: new Date().toISOString(),
+      stations,
+      cabins,
+      stats,
     },
-  };
-
-  // Enviamos la respuesta con el formato que ya usas.
-  res.json({ ok: true, data });
+  });
 });
 
-export default { publicMap };
+export const privateMap = asyncHandler(async (_req, res) => {
+  const { stations, cabins, stats } = await getPrivilegedMapData();
+
+  res.json({
+    ok: true,
+    data: {
+      message: 'Datos detallados del geoportal cargados exitosamente.',
+      timestamp: new Date().toISOString(),
+      stations,
+      cabins,
+      stats,
+    },
+  });
+});
+
+export default { publicMap, privateMap };
