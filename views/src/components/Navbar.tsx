@@ -43,7 +43,7 @@ export function Navbar({ currentView, onViewChange, authState, onLoginClick, onL
           {/* Logo */}
           <div className="flex items-center space-x-2">
             <img
-              src="/@logo.png"
+              src="/logo.png"
               alt="UrbanFlow logo"
               className="h-8 w-auto"
             />
