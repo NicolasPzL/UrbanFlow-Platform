@@ -5,6 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, AreaChart, Area, ComposedChart } from "recharts";
 import { TrendingUp, TrendingDown, Activity, Users, Gauge, AlertTriangle, MapPin, Clock, Zap, BarChart3, Thermometer, Target, Navigation } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Chatbot } from "./Chatbot";
 
 const normalizeCabinId = (value?: string | null): string | null => {
   if (value === undefined || value === null) return null;
@@ -17,6 +18,7 @@ const normalizeCabinId = (value?: string | null): string | null => {
   const padded = digits.slice(-4).padStart(4, '0');
   return `CAB-${padded}`;
 };
+
 
 type DashboardData = {
   kpis?: { 
@@ -57,7 +59,7 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCabin, setSelectedCabin] = useState<string>('all');
+  const [selectedCabin, setSelectedCabin] = useState<string>('CB001');
 
   useEffect(() => {
     (async () => {
@@ -789,6 +791,14 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Chatbot */}
+      {showChatbot && (
+        <Chatbot 
+          onClose={() => setShowChatbot(false)}
+          defaultMinimized={false}
+        />
+      )}
     </div>
   );
 }

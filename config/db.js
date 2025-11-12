@@ -10,7 +10,7 @@ dotenv.config();
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'urbanflow_db',
+  database: process.env.DB_NAME || 'Urbanflow_db',
   password: process.env.DB_PASSWORD || 'password',
   port: Number(process.env.DB_PORT) || 5432,
   // Configuraciones adicionales para producción
