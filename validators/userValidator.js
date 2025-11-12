@@ -2,8 +2,10 @@
 // Validaciones ligeras sin dependencias externas.
 // Si deseas Joi/Zod más adelante, podemos reemplazar estas funciones.
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function isEmail(value) {
-  return typeof value === 'string' && /.+@.+\..+/.test(value);
+  return typeof value === 'string' && EMAIL_REGEX.test(value.trim());
 }
 
 function nonEmptyString(value) {
@@ -34,7 +36,7 @@ export function validateCreateUser(req, res, next) {
   }
 
   if (errors.length) {
-    return res.status(400).json({ ok: false, error: { code: 'VALIDATION_ERROR', message: 'Datos inválidos', details: errors } });
+    return res.status(422).json({ ok: false, error: { code: 'VALIDATION_ERROR', message: 'Datos inválidos', details: errors } });
   }
 
   return next();
@@ -57,7 +59,7 @@ export function validateUpdateUser(req, res, next) {
   if (passwordHash !== undefined && !nonEmptyString(passwordHash)) errors.push('passwordHash no puede ser vacío');
 
   if (errors.length) {
-    return res.status(400).json({ ok: false, error: { code: 'VALIDATION_ERROR', message: 'Datos inválidos', details: errors } });
+    return res.status(422).json({ ok: false, error: { code: 'VALIDATION_ERROR', message: 'Datos inválidos', details: errors } });
   }
 
   return next();
