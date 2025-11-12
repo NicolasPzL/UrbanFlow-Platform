@@ -6,9 +6,220 @@ from ..db import models as m
 from ..services.analytics import AnalyticsService
 from ..services.ml import MLPredictionService
 from ..services.telemetry_processor_simple import TelemetryProcessorSimple as TelemetryProcessor
+from ..services.chatbot import ChatbotService
+from ..services.context_manager import get_context_manager
+from ..core.config import settings
 from datetime import datetime, timedelta
+from pydantic import BaseModel
+from typing import Optional
+import uuid
+import os
 
 api_router = APIRouter()
+
+# Pydantic models for chatbot endpoints
+class ChatbotQueryRequest(BaseModel):
+    question: str
+    session_id: Optional[str] = None
+    include_ml_analysis: Optional[bool] = False
+
+class ChatbotConversationRequest(BaseModel):
+    question: str
+    session_id: str
+
+# =============================================================================
+# CHATBOT ENDPOINTS
+# =============================================================================
+
+@api_router.post("/chatbot/query")
+def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
+    """
+    Main chatbot endpoint for natural language queries.
+    Can optionally maintain conversation context via session_id.
+    """
+    try:
+        # Initialize chatbot service
+        print(
+            "[DEBUG chatbot_query] provider=",
+            settings.LLM_PROVIDER,
+            "model=",
+            settings.MODEL_NAME,
+            "has_openai_key=",
+            bool(os.getenv("OPENAI_API_KEY")),
+        )
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+        )
+        
+        # Get or create conversation context
+        context = None
+        if request.session_id:
+            context_manager = get_context_manager()
+            context = context_manager.get_or_create_context(
+                request.session_id,
+                max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
+            )
+            context.add_user_message(request.question)
+        
+        # Process the query
+        result = chatbot.process_query(
+            question=request.question,
+            context=context,
+            include_ml_analysis=request.include_ml_analysis
+        )
+        
+        # Add response to context if session exists
+        if context and result.get("success"):
+            context.add_assistant_message(result.get("response", ""))
+        
+        return {"ok": True, "data": result}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@api_router.post("/chatbot/conversation")
+def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depends(get_db)):
+    """
+    Chatbot endpoint that maintains full conversation context.
+    Requires a session_id to track the conversation.
+    """
+    try:
+        # Initialize chatbot service
+        print(
+            "[DEBUG chatbot_conversation] provider=",
+            settings.LLM_PROVIDER,
+            "model=",
+            settings.MODEL_NAME,
+            "has_openai_key=",
+            bool(os.getenv("OPENAI_API_KEY")),
+        )
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+        )
+        
+        # Get or create conversation context
+        context_manager = get_context_manager()
+        context = context_manager.get_or_create_context(
+            request.session_id,
+            max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
+        )
+        
+        # Add user message to context
+        context.add_user_message(request.question)
+        
+        # Process the query with full context
+        result = chatbot.process_query(
+            question=request.question,
+            context=context,
+            include_ml_analysis=True
+        )
+        
+        # Add response to context
+        if result.get("success"):
+            context.add_assistant_message(result.get("response", ""))
+        
+        # Include conversation history in response
+        result["conversation_history"] = context.get_messages_for_llm()
+        result["session_id"] = request.session_id
+        
+        return {"ok": True, "data": result}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@api_router.get("/chatbot/capabilities")
+def chatbot_capabilities(db: Session = Depends(get_db)):
+    print("DEBUG provider:", settings.LLM_PROVIDER, "model:", settings.MODEL_NAME)
+    """
+    Returns information about chatbot capabilities and supported queries.
+    """
+    try:
+        print(
+            "[DEBUG chatbot_capabilities] provider=",
+            settings.LLM_PROVIDER,
+            "model=",
+            settings.MODEL_NAME,
+            "has_openai_key=",
+            bool(os.getenv("OPENAI_API_KEY")),
+        )
+
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+)
+        
+        capabilities = chatbot.get_capabilities()
+        return {"ok": True, "data": capabilities}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@api_router.post("/chatbot/session/new")
+def create_chatbot_session():
+    """
+    Create a new chatbot session and return a session_id.
+    """
+    try:
+        session_id = str(uuid.uuid4())
+        context_manager = get_context_manager()
+        context = context_manager.create_context(
+            session_id,
+            max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
+        )
+        
+        return {
+            "ok": True,
+            "data": {
+                "session_id": session_id,
+                "created_at": context.created_at.isoformat(),
+                "max_messages": settings.CHATBOT_MAX_CONTEXT_MESSAGES
+            }
+        }
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@api_router.delete("/chatbot/session/{session_id}")
+def delete_chatbot_session(session_id: str):
+    """
+    Delete a chatbot session and clear its context.
+    """
+    try:
+        context_manager = get_context_manager()
+        deleted = context_manager.delete_context(session_id)
+        
+        if deleted:
+            return {"ok": True, "data": {"message": "Session deleted successfully"}}
+        else:
+            return {"ok": False, "error": "Session not found"}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+@api_router.get("/chatbot/session/{session_id}")
+def get_chatbot_session(session_id: str):
+    """
+    Get conversation history for a specific session.
+    """
+    try:
+        context_manager = get_context_manager()
+        context = context_manager.get_context(session_id)
+        
+        if not context:
+            return {"ok": False, "error": "Session not found"}
+        
+        return {"ok": True, "data": context.to_dict()}
+    
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 # =============================================================================
 # ENDPOINTS DE PROCESAMIENTO DE TELEMETRÍA
