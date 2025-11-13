@@ -126,6 +126,10 @@ export function UserManagement() {
     : editRolesValid
     ? null
     : "El rol 'cliente' no puede combinarse con admin, analista u operador";
+  const clientSelectedNew = newUserRoles.includes("cliente");
+  const staffSelectedNew = newUserRoles.some((role) => STAFF_ROLE_SET.has(role));
+  const clientSelectedEdit = editUserRoles.includes("cliente");
+  const staffSelectedEdit = editUserRoles.some((role) => STAFF_ROLE_SET.has(role));
   // Cargar usuarios desde backend (requiere admin)
   useEffect(() => {
     (async () => {
@@ -534,10 +538,13 @@ export function UserManagement() {
                         <Label htmlFor="name">Nombre Completo</Label>
                         <Input
                           id="name"
+                          name="name"
                           value={newUser.name}
                           onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
                           placeholder="Ej. Juan Pérez"
                           aria-invalid={showNameError}
+                          autoComplete="name"
+                          required
                         />
                         {showNameError && (
                           <p className="text-sm text-red-600 mt-1" role="alert" aria-live="polite">
@@ -550,11 +557,15 @@ export function UserManagement() {
                         <Input
                           id="email"
                           type="email"
+                          name="email"
                           value={newUser.email}
                           onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                           placeholder="juan.perez@urbanflow.com"
                           aria-invalid={Boolean(emailError)}
                           aria-describedby="create-email-error"
+                          autoComplete="email"
+                          required
+                          pattern={EMAIL_PATTERN.source}
                         />
                         {emailError && (
                           <p
@@ -570,19 +581,29 @@ export function UserManagement() {
                       <div>
                         <Label>Roles</Label>
                         <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-                          {ROLE_OPTIONS.map(({ value, label }) => (
-                            <label key={value} className="flex items-center space-x-2">
+                          {ROLE_OPTIONS.map(({ value, label }) => {
+                            const inputId = `create-role-${value}`;
+                            const disabled = value === "cliente" ? staffSelectedNew : clientSelectedNew;
+                            return (
+                              <div key={value} className="flex items-center space-x-2">
                               <Checkbox
+                                  id={inputId}
+                                  name="roles"
+                                  value={value}
                                 checked={newUserRoles.includes(value)}
                                 onCheckedChange={(checked: boolean | "indeterminate") => {
                                   const next = toggleRoleSelection(newUserRoles, value, Boolean(checked));
                                   setNewUserRoles(next);
                                   setNewUser((prev) => ({ ...prev, rol: next[0] ?? prev.rol }));
                                 }}
+                                  disabled={disabled && !newUserRoles.includes(value)}
                               />
-                              <span>{label}</span>
-                            </label>
-                          ))}
+                                <Label htmlFor={inputId} className="text-sm font-medium leading-none">
+                                  {label}
+                                </Label>
+                              </div>
+                            );
+                          })}
                         </div>
                         <p className="text-xs text-gray-500 mt-1">
                           El primer rol marcado será el rol primario del usuario.
@@ -765,8 +786,11 @@ export function UserManagement() {
                                     <Label htmlFor="edit-name">Nombre Completo</Label>
                                     <Input
                                       id="edit-name"
+                                      name="name"
                                       value={newUser.name}
                                       onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                                      autoComplete="name"
+                                      required
                                     />
                                   </div>
                                   <div>
@@ -774,26 +798,40 @@ export function UserManagement() {
                                     <Input
                                       id="edit-email"
                                       type="email"
+                                      name="email"
                                       value={newUser.email}
                                       onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                                      autoComplete="email"
+                                      required
+                                      pattern={EMAIL_PATTERN.source}
                                     />
                                   </div>
                                   <div>
                                     <Label>Roles</Label>
                                     <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-                                      {ROLE_OPTIONS.map(({ value, label }) => (
-                                        <label key={value} className="flex items-center space-x-2">
+                                      {ROLE_OPTIONS.map(({ value, label }) => {
+                                        const inputId = `edit-role-${value}`;
+                                        const disabled = value === "cliente" ? staffSelectedEdit : clientSelectedEdit;
+                                        return (
+                                          <div key={value} className="flex items-center space-x-2">
                                           <Checkbox
+                                              id={inputId}
+                                              name="roles"
+                                              value={value}
                                             checked={editUserRoles.includes(value)}
                                             onCheckedChange={(checked: boolean | "indeterminate") => {
                                               const next = toggleRoleSelection(editUserRoles, value, Boolean(checked));
                                               setEditUserRoles(next);
                                               setNewUser((prev) => ({ ...prev, rol: next[0] ?? prev.rol }));
                                             }}
+                                              disabled={disabled && !editUserRoles.includes(value)}
                                           />
-                                          <span>{label}</span>
-                                        </label>
-                                      ))}
+                                            <Label htmlFor={inputId} className="text-sm font-medium leading-none">
+                                              {label}
+                                            </Label>
+                                          </div>
+                                        );
+                                      })}
                                     </div>
                                     <p className="text-xs text-gray-500 mt-1">El primer rol marcado será el rol primario del usuario.</p>
                                     {editingUser && editRoleError && (

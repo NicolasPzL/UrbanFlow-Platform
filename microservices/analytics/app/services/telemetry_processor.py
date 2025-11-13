@@ -94,6 +94,62 @@ class TelemetryProcessor:
                 continue
         
         return processed_measurements
+
+    # ------------------------------------------------------------------
+    # Métodos públicos de apoyo para reutilizar el cálculo en simuladores
+    # ------------------------------------------------------------------
+    def build_metrics_for_row(self, current_row, previous_row=None, distancia_acumulada=0.0):
+        """
+        Calcula las métricas para una fila individual reutilizando la lógica existente.
+        Se expone para que tareas externas (ej. simulador) no dupliquen cálculos.
+        """
+        context = []
+        if previous_row is not None:
+            context.append(previous_row)
+        context.append(current_row)
+        current_index = len(context) - 1
+        metrics = self._calculate_row_metrics(
+            current_row,
+            context,
+            current_index,
+            distancia_acumulada
+        )
+        return metrics
+
+    def build_measurement_model(self, metrics):
+        """
+        Construye una instancia de Medicion a partir del diccionario de métricas
+        calculado por build_metrics_for_row o procesos existentes.
+        """
+        if metrics is None:
+            return None
+
+        # Quitar campos internos que no forman parte del modelo
+        metrics = dict(metrics)
+        metrics.pop('distancia_m', None)
+        metrics.pop('distancia_acumulada_m', None)
+
+        return m.Medicion(
+            sensor_id=metrics['sensor_id'],
+            timestamp=metrics['timestamp'],
+            latitud=metrics.get('latitud'),
+            longitud=metrics.get('longitud'),
+            altitud=metrics.get('altitud'),
+            velocidad=metrics.get('velocidad'),
+            rms=metrics.get('rms'),
+            kurtosis=metrics.get('kurtosis'),
+            skewness=metrics.get('skewness'),
+            zcr=metrics.get('zcr'),
+            pico=metrics.get('pico'),
+            crest_factor=metrics.get('crest_factor'),
+            frecuencia_media=metrics.get('frecuencia_media'),
+            frecuencia_dominante=metrics.get('frecuencia_dominante'),
+            amplitud_max_espectral=metrics.get('amplitud_max_espectral'),
+            energia_banda_1=metrics.get('energia_banda_1'),
+            energia_banda_2=metrics.get('energia_banda_2'),
+            energia_banda_3=metrics.get('energia_banda_3'),
+            estado_procesado=metrics.get('estado_procesado')
+        )
     
     def _process_chunk_consecutive(self, chunk_data, initial_distance=0.0):
         """Procesa un chunk de datos consecutivos"""

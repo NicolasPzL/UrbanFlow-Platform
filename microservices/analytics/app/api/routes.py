@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from ..db.session import get_db
+from ..core.config import settings
 from ..db import models as m
 from ..services.analytics import AnalyticsService
 from ..services.ml import MLPredictionService
@@ -9,6 +10,34 @@ from ..services.telemetry_processor_simple import TelemetryProcessorSimple as Te
 from datetime import datetime, timedelta
 
 api_router = APIRouter()
+
+# =============================================================================
+# DIAGNÓSTICO DEL SIMULADOR
+# =============================================================================
+
+@api_router.get("/simulator/status")
+def simulator_status(request: Request):
+    """Devuelve el estado del simulador de telemetría (si está activo)."""
+    simulator = getattr(request.app.state, "telemetry_simulator", None)
+    if not simulator:
+        return {
+            "ok": True,
+            "data": {
+                "enabled": settings.ENABLE_SIMULATOR,
+                "running": False,
+                "current_index": 0,
+                "cycles": 0,
+                "generated_measurements": 0,
+            },
+        }
+    data = simulator.status()
+    data["enabled"] = settings.ENABLE_SIMULATOR
+    data.setdefault("current_index", data.get("current_index", 0))
+    data.setdefault("current_cycle", data.get("current_cycle", 0))
+    data.setdefault(
+        "processed_measurements", data.get("processed_measurements", 0)
+    )
+    return {"ok": True, "data": data}
 
 # =============================================================================
 # ENDPOINTS DE PROCESAMIENTO DE TELEMETRÍA
