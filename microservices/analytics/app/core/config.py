@@ -26,6 +26,11 @@ def _build_db_url() -> str:
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
 
 _DATABASE_URL_DEFAULT = _build_db_url()
+_DEBUG_DEFAULT = os.getenv("DEBUG", "false").lower() == "true"
+_ENABLE_SIMULATOR_ENV = os.getenv("ENABLE_SIMULATOR")
+if _ENABLE_SIMULATOR_ENV is None:
+    # En entornos de desarrollo (DEBUG=true) activamos el simulador por defecto
+    _ENABLE_SIMULATOR_ENV = "true" if _DEBUG_DEFAULT else "false"
 
 class Settings(BaseModel):
     # Database configuration
@@ -54,5 +59,10 @@ class Settings(BaseModel):
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+    # Simulator
+    ENABLE_SIMULATOR: bool = _ENABLE_SIMULATOR_ENV.lower() == "true"
+    SIMULATOR_INTERVAL_SECONDS: float = float(os.getenv("SIMULATOR_INTERVAL_SECONDS", "5"))
+    SIMULATOR_SLICE_SIZE: int = int(os.getenv("SIMULATOR_SLICE_SIZE", "1"))
 
 settings = Settings()

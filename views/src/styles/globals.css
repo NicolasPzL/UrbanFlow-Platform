@@ -187,3 +187,11 @@
 html {
   font-size: var(--font-size);
 }
+
+/* Safari compatibility */
+[data-sonner-toast][data-swiped="true"] {
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}

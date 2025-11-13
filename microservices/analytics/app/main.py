@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .api.routes import api_router
 from .core.config import settings
+from .services.telemetry_simulator import TelemetrySimulator
 import logging
 import os
 import json
@@ -133,7 +134,23 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 async def on_startup():
     generator_enabled = os.getenv("GENERATOR_ENABLED", "false").lower() == "true"
     _write_audit("GENERATOR_START", {"enabled": generator_enabled})
+    
+    simulator = None
+    if settings.ENABLE_SIMULATOR:
+        simulator = TelemetrySimulator(
+            interval_seconds=settings.SIMULATOR_INTERVAL_SECONDS,
+            slice_size=settings.SIMULATOR_SLICE_SIZE,
+        )
+        simulator.start()
+        _write_audit("SIMULATOR_START", simulator.status())
+    else:
+        logger.info("Simulador de telemetría desactivado por configuración.")
+    app.state.telemetry_simulator = simulator
 
 @app.on_event("shutdown")
 async def on_shutdown():
+    simulator = getattr(app.state, "telemetry_simulator", None)
+    if simulator:
+        await simulator.stop()
+        _write_audit("SIMULATOR_STOP", simulator.status())
     _write_audit("GENERATOR_STOP", {})

@@ -46,25 +46,23 @@ const __dirname = path.dirname(__filename);
 // =============================================================================
 
 // Seguridad
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      workerSrc: ["'self'", "blob:"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https://api.mapbox.com", "https://events.mapbox.com"],
-    },
+app.disable('x-powered-by');
+app.use(helmet.hidePoweredBy());
+app.use(helmet.noSniff());
+app.use(helmet.referrerPolicy({ policy: 'strict-origin-when-cross-origin' }));
+app.use(helmet.contentSecurityPolicy({
+  useDefaults: true,
+  directives: {
+    'default-src': ["'self'"],
+    'script-src': ["'self'", 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.mapbox.com', "'unsafe-inline'"],
+    'style-src': ["'self'", 'https://api.mapbox.com', 'https://*.mapbox.com', 'https://fonts.googleapis.com', "'unsafe-inline'"],
+    'img-src': ["'self'", 'data:', 'blob:', 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.mapbox.com', 'https://images.unsplash.com'],
+    'font-src': ["'self'", 'data:', 'https://api.mapbox.com', 'https://*.mapbox.com', 'https://fonts.gstatic.com'],
+    'connect-src': ["'self'", 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.mapbox.com'],
+    'frame-ancestors': ["'self'"],
+    'worker-src': ["'self'", 'blob:', 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.mapbox.com'],
   },
 }));
-
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'no-referrer');
-  next();
-});
 
 // CORS
 app.use(cors({
@@ -129,6 +127,14 @@ const apiLimiter = rateLimit({
 // Aplicar límites (antes de montar rutas)
 app.use('/api/auth/login', loginLimiter);
 app.use('/api/', apiLimiter);
+
+// Cabeceras estándar para API JSON
+app.use('/api', (req, res, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+});
 
 // Sanitización (pendiente de implementar sanitizers específicos)
 // app.use(sanitizeQuery);
@@ -232,6 +238,22 @@ app.use('/api/citizen/analytics', requireAuth, requireRole('cliente'), (req, res
 // =============================================================================
 // SERVIR FRONTEND (BUILD VITE) Y FALLBACK SPA
 // =============================================================================
+
+const ONE_YEAR = 60 * 60 * 24 * 365;
+
+// Servir activos estáticos propios con caché controlada
+app.use('/static', express.static(path.join(process.cwd(), 'public'), {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    const name = path.basename(filePath);
+    if (/\.[0-9a-f]{8,}\./i.test(name)) {
+      res.setHeader('Cache-Control', `public, max-age=${ONE_YEAR}, immutable`);
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=3600, stale-while-revalidate=3600, stale-if-error=18000');
+    }
+  },
+}));
 
 // Servir archivos estáticos del nuevo frontend compilado (Vite)
 const clientBuildPath = path.join(__dirname, 'views', 'build');

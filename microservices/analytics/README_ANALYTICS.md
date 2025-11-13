@@ -155,6 +155,29 @@ python start_analytics.py
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
+### 5.1 Modo simulación de telemetría
+
+El microservicio puede generar mediciones sintéticas a partir de `telemetria_cruda` para alimentar el dashboard completo de UrbanFlow sin necesidad de hardware real.
+
+```bash
+# Configurar variables (desarrollo)
+export ENABLE_SIMULATOR=true
+export SIMULATOR_INTERVAL_SECONDS=5   # intervalo entre lotes
+export SIMULATOR_SLICE_SIZE=3        # registros procesados por tick
+
+# Levantar el microservicio
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+
+# Iniciar el backend Node en otra terminal
+node app.js
+```
+
+Pruebas rápidas:
+
+- `GET http://localhost:8001/api/simulator/status` → `enabled=true`, `running=true`, `generated_measurements` creciendo.
+- `SELECT * FROM mediciones ORDER BY medicion_id DESC LIMIT 10;` → filas nuevas generadas por el simulador.
+- Abrir la aplicación web: el dashboard y el geoportal muestran datos vivos provenientes de `mediciones`.
+
 ### 6. Pruebas
 ```bash
 # Ejecutar pruebas completas

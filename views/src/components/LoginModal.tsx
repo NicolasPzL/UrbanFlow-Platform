@@ -276,11 +276,13 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
               <Input
                 id="old_password"
                 type="password"
+                name="currentPassword"
                 value={oldPassword}
                 onChange={(e) => setOldPassword(e.target.value)}
                 placeholder="Ingresa la contraseña temporal proporcionada"
                 required
                 autoFocus
+                autoComplete="current-password"
               />
               <p className="text-xs text-gray-500">Esta es la contraseña que recibiste cuando se creó tu cuenta.</p>
             </div>
@@ -290,10 +292,12 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
               <Input
                 id="new_password"
                 type="password"
+                name="newPassword"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Mínimo 8 caracteres, mayúscula, minúscula y número"
                 required
+                autoComplete="new-password"
               />
             </div>
 
@@ -302,10 +306,12 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
               <Input
                 id="confirm_password"
                 type="password"
+                name="confirmPassword"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirma tu nueva contraseña"
                 required
+                autoComplete="new-password"
               />
             </div>
             
@@ -342,10 +348,12 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
             <Input
               id="email"
               type="email"
+              name="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="tu.email@urbanflow.com"
               required
+              autoComplete="email"
             />
           </div>
           
@@ -354,10 +362,12 @@ export function LoginModal({ isOpen, onClose, onLogin }: LoginModalProps) {
             <Input
               id="password"
               type="password"
+              name="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Ingresa tu contraseña"
               required
+              autoComplete="current-password"
             />
           </div>
           
