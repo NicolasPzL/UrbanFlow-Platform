@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from ..db.session import get_db
 from ..db import models as m
 from ..services.analytics import AnalyticsService
@@ -13,7 +13,6 @@ from datetime import datetime, timedelta
 from pydantic import BaseModel
 from typing import Optional
 import uuid
-import os
 
 api_router = APIRouter()
 
@@ -44,8 +43,8 @@ def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
             settings.LLM_PROVIDER,
             "model=",
             settings.MODEL_NAME,
-            "has_openai_key=",
-            bool(os.getenv("OPENAI_API_KEY")),
+            "ollama_base_url=",
+            settings.OLLAMA_BASE_URL,
         )
         chatbot = ChatbotService(
             db=db,
@@ -93,8 +92,8 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
             settings.LLM_PROVIDER,
             "model=",
             settings.MODEL_NAME,
-            "has_openai_key=",
-            bool(os.getenv("OPENAI_API_KEY")),
+            "ollama_base_url=",
+            settings.OLLAMA_BASE_URL,
         )
         chatbot = ChatbotService(
             db=db,
@@ -145,8 +144,8 @@ def chatbot_capabilities(db: Session = Depends(get_db)):
             settings.LLM_PROVIDER,
             "model=",
             settings.MODEL_NAME,
-            "has_openai_key=",
-            bool(os.getenv("OPENAI_API_KEY")),
+            "ollama_base_url=",
+            settings.OLLAMA_BASE_URL,
         )
 
         chatbot = ChatbotService(
