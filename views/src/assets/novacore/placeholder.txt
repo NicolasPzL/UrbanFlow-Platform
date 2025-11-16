@@ -1,0 +1,10 @@
+Coloca aquí las imágenes reales del equipo cuando estén disponibles.
+Archivos esperados:
+- juan-jose.png
+- nicolas-paez.png
+- andrea-castro.png
+- sebastian-duque.png
+
+Mientras tanto, el componente usa un fallback SVG embebido.
+
+

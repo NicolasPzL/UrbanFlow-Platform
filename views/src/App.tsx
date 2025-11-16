@@ -10,6 +10,7 @@ import { UserManagement } from "./components/UserManagement";
 import { CitizenDashboard } from "./components/CitizenDashboard";
 import { AuthState, AppView, User } from "./types";
 import { normalizeRolToEs } from "./lib/roles";
+import { NovacorePage } from "./novacore/NovacorePage";
 import { Toaster } from "./components/ui/sonner";
 
 export default function App() {
@@ -130,6 +131,8 @@ export default function App() {
         return <UserManagement />;
       case 'citizen-dashboard':
         return <CitizenDashboard />;
+      case 'novacore':
+        return <NovacorePage />;
       default:
         return authState.isAuthenticated
           ? <WelcomeDashboard authState={authState} onViewChange={handleViewChange} />
