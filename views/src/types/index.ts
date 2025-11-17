@@ -72,6 +72,6 @@ export type AuthState = {
   user: User | null;
 };
 
-export type AppView = 'landing' | 'geoportal-public' | 'dashboard' | 'geoportal-detail' | 'user-management' | 'citizen-dashboard';
+export type AppView = 'landing' | 'geoportal-public' | 'dashboard' | 'geoportal-detail' | 'user-management' | 'citizen-dashboard' | 'novacore';
 
 export type MapMode = '2d' | '3d';

@@ -77,6 +77,7 @@ export function LandingPage({ onViewChange }: LandingPageProps) {
                   variant="outline" 
                   size="lg" 
                   className="text-lg px-8 py-6"
+                  onClick={() => onViewChange('novacore')}
                 >
                   Conocer Más
                 </Button>
