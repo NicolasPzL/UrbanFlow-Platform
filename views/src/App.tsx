@@ -66,9 +66,13 @@ export default function App() {
       user
     });
 
-    // Si estaba en geoportal público, pasa al detallado
+    const role = user.rol?.toLowerCase?.() ?? '';
+    const hasPrivilegedAccess = ['admin', 'operador', 'analista'].includes(role);
+
     if (currentView === 'geoportal-public') {
-      setCurrentView('geoportal-detail');
+      setCurrentView(hasPrivilegedAccess ? 'geoportal-detail' : 'geoportal-public');
+    } else if (currentView === 'geoportal-detail' && !hasPrivilegedAccess) {
+      setCurrentView('geoportal-public');
     }
   };
 

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Filter, MapPin, Activity, Users, Eye, Compass, AlertTriangle } from "lucide-react";
 import { AuthState, MapMode, CabinData, StationData } from "../types";
 import { MapModeToggle } from "./ui/MapModeToggle";
+import { PublicGeoportal } from "./PublicGeoportal";
 
 interface DetailedGeoportalProps {
   authState?: AuthState;
@@ -61,6 +62,8 @@ const formatTime = (isoDate?: string | null) => {
   }
 };
 
+const PRIVILEGED_ROLES = new Set(["admin", "operador", "analista"]);
+
 export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
   const [filteredStatus, setFilteredStatus] = useState<string>("all");
   const [selectedView, setSelectedView] = useState<string>("overview");
@@ -71,7 +74,21 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
   const [error, setError] = useState<string | null>(null);
   const [mapMode, setMapMode] = useState<MapMode>("2d");
 
+  const normalizedRole = authState?.user?.rol?.toLowerCase() ?? null;
+  const hasPrivilegedAccess = normalizedRole ? PRIVILEGED_ROLES.has(normalizedRole) : false;
+
   useEffect(() => {
+    if (!hasPrivilegedAccess) {
+      setLoading(false);
+      setError(null);
+      setStations([]);
+      setCabins([]);
+      setStats({});
+      return;
+    }
+
+    let isMounted = true;
+
     const fetchData = async () => {
       try {
         const resp = await fetch("/api/map/private", { credentials: "include" });
@@ -79,21 +96,29 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         const json = await resp.json();
         const payload: PrivateResponse = json?.data ?? { stations: [], cabins: [], stats: {} };
 
+        if (!isMounted) return;
         setStations(Array.isArray(payload?.stations) ? payload.stations : []);
         setCabins(Array.isArray(payload?.cabins) ? payload.cabins : []);
         setStats(payload?.stats ?? {});
         setError(null);
       } catch (e: any) {
+        if (!isMounted) return;
         setError(e?.message || "Error al cargar");
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
+    setLoading(true);
     fetchData();
     const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [hasPrivilegedAccess]);
 
   const filteredCabins = filteredStatus === "all"
     ? cabins
@@ -119,23 +144,23 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
   const avgVelocity = stats.avgVelocity ?? null;
   const avgETA = stats.avgETA ?? null;
 
+  if (!hasPrivilegedAccess) {
+    return <PublicGeoportal />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              {authState?.user?.rol === "cliente" ? "Geoportal Urban Flow" : "Geoportal Detallado"}
-            </h1>
+            <h1 className="text-3xl font-bold text-gray-900">Geoportal Detallado</h1>
             <p className="text-gray-600 mt-2">
-              {authState?.user?.rol === "cliente"
-                ? "Monitorea en tiempo real la ubicación y estado de las cabinas del sistema"
-                : "Vista avanzada del sistema con datos técnicos y controles operacionales"}
+              Vista avanzada del sistema con datos técnicos y controles operacionales
             </p>
           </div>
 
-          {authState?.user?.rol !== "cliente" && (
+          {hasPrivilegedAccess && (
             <div className="flex flex-col sm:flex-row gap-4 mt-4 lg:mt-0">
               <Select value={filteredStatus} onValueChange={setFilteredStatus}>
                 <SelectTrigger className="w-48">
@@ -167,7 +192,7 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         </div>
 
         {/* System Overview Cards */}
-        {authState?.user?.rol !== "cliente" && (
+        {hasPrivilegedAccess && (
           <div className="grid grid-cols-1 gap-6 mb-8 md:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -253,7 +278,7 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
                 cabins={filteredCabins}
                 stations={stations}
                 isPublic={false}
-                showSensitiveInfo={authState?.user?.rol !== "cliente"}
+                showSensitiveInfo={hasPrivilegedAccess}
                 className="h-96 w-full"
                 mode={mapMode}
                 autoFocus="stations"
@@ -263,7 +288,7 @@ export function DetailedGeoportal({ authState }: DetailedGeoportalProps) {
         </Card>
 
         {/* Technical Parameters - Solo para usuarios con permisos */}
-        {authState?.user?.rol !== "cliente" && (
+        {hasPrivilegedAccess && (
           <div className="mb-8 grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
