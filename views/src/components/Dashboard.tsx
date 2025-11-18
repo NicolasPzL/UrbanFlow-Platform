@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
@@ -59,55 +59,68 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCabin, setSelectedCabin] = useState<string>('CB001');
+  const [initialized, setInitialized] = useState(false);
+  const [initialCabinSet, setInitialCabinSet] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      if (!initialized) setLoading(true);
+
+      const resp = await fetch('/api/dashboard', { credentials: 'include' });
+      if (!resp.ok) throw new Error('No se pudo cargar el dashboard');
+      const json = await resp.json();
+      console.log('Datos del dashboard recibidos:', json);
+      setData(json.data || {});
+
+      const cabinList = Array.isArray(json?.data?.availableCabins)
+        ? json.data.availableCabins
+        : Array.isArray(json?.data?.cabins)
+        ? json.data.cabins
+        : [];
+
+      if (!initialCabinSet && cabinList.length > 0) {
+        const firstRaw = cabinList[0]?.id ?? cabinList[0]?.codigo ?? cabinList[0]?.label;
+        const canonicalFirst = normalizeCabinId(firstRaw);
+        if (canonicalFirst && canonicalFirst !== 'all') {
+          setSelectedCabin((prev) => (prev === 'all' ? canonicalFirst : prev));
+        }
+        setInitialCabinSet(true);
+      }
+
+      Promise.allSettled([
+        fetch('/api/analytics/summary', { credentials: 'include' }),
+        fetch('/api/analytics/system-health', { credentials: 'include' })
+      ]).then(async (results) => {
+        try {
+          const [r1, r2] = results;
+          if (r1.status === 'fulfilled' && r1.value.ok) {
+            const a1 = await r1.value.json();
+            console.log('Resumen analytics:', a1);
+          }
+          if (r2.status === 'fulfilled' && r2.value.ok) {
+            const a2 = await r2.value.json();
+            console.log('Salud del sistema (analytics):', a2);
+          }
+        } catch (err) {
+          console.warn('No se pudo procesar analytics:', err);
+        }
+      });
+    } catch (e: any) {
+      console.error('Error al cargar dashboard:', e);
+      setError(e?.message || 'Error al cargar');
+    } finally {
+      if (!initialized) {
+        setLoading(false);
+        setInitialized(true);
+      }
+    }
+  }, [initialCabinSet, initialized]);
 
   useEffect(() => {
-    (async () => {
-      try {
-        // Cargar dashboard principal (Node)
-        const resp = await fetch('/api/dashboard', { credentials: 'include' });
-        if (!resp.ok) throw new Error('No se pudo cargar el dashboard');
-        const json = await resp.json();
-        console.log('Datos del dashboard recibidos:', json);
-        setData(json.data || {});
-        const cabinList = Array.isArray(json?.data?.availableCabins)
-          ? json.data.availableCabins
-          : Array.isArray(json?.data?.cabins)
-          ? json.data.cabins
-          : [];
-        if (cabinList.length > 0) {
-          const firstRaw = cabinList[0]?.id ?? cabinList[0]?.codigo ?? cabinList[0]?.label;
-          const canonicalFirst = normalizeCabinId(firstRaw);
-          if (canonicalFirst && canonicalFirst !== 'all') {
-            setSelectedCabin(canonicalFirst);
-          }
-        }
-        // Paralelamente, intentar cargar resumen de analytics (FastAPI vía proxy)
-        Promise.allSettled([
-          fetch('/api/analytics/summary', { credentials: 'include' }),
-          fetch('/api/analytics/system-health', { credentials: 'include' })
-        ]).then(async (results) => {
-          try {
-            const [r1, r2] = results;
-            if (r1.status === 'fulfilled' && r1.value.ok) {
-              const a1 = await r1.value.json();
-              console.log('Resumen analytics:', a1);
-            }
-            if (r2.status === 'fulfilled' && r2.value.ok) {
-              const a2 = await r2.value.json();
-              console.log('Salud del sistema (analytics):', a2);
-            }
-          } catch (e) {
-            console.warn('No se pudo procesar analytics:', e);
-          }
-        });
-      } catch (e: any) {
-        console.error('Error al cargar dashboard:', e);
-        setError(e?.message || 'Error al cargar');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    loadDashboard();
+    const interval = window.setInterval(loadDashboard, 10000);
+    return () => window.clearInterval(interval);
+  }, [loadDashboard]);
 
   const historicalData = Array.isArray(data.historicalData) 
     ? data.historicalData 

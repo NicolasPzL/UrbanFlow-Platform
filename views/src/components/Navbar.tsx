@@ -2,7 +2,6 @@ import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
 import { Menu, User, BarChart3, Map, Users, MessageCircle } from "lucide-react";
 import { AuthState, AppView } from "../types";
-import logoImage from 'figma:asset/856ee0847a1c73c8150b4a4b5a7067b12c34fca3.png';
 
 interface NavbarProps {
   currentView: AppView;
@@ -45,10 +44,10 @@ export function Navbar({ currentView, onViewChange, authState, onLoginClick, onL
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <div className="flex items-center space-x-2">
-            <img 
-              src={logoImage} 
-              alt="Urban Flow Logo" 
-              className="h-8 w-8"
+            <img
+              src="/logo.png"
+              alt="UrbanFlow logo"
+              className="h-8 w-auto"
             />
             <span className="text-xl font-semibold text-gray-900">Urban Flow</span>
           </div>

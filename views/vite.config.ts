@@ -6,6 +6,7 @@ import path from 'path';
 export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
+    publicDir: path.resolve(__dirname, '../public'),
     optimizeDeps: {
       include: ['react-map-gl', 'mapbox-gl'],
       exclude: ['@mapbox/mapbox-gl-language'],

@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  # Base de datos PostgreSQL
+  postgres:
+    image: postgres:15
+    container_name: urbanflow-postgres
+    environment:
+      POSTGRES_DB: urbanflow_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docs/db_actualizada_2do_sprint.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - urbanflow-network
+
+  # Backend Node.js
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: urbanflow-backend
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=urbanflow_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - JWT_SECRET=your_jwt_secret
+      - REFRESH_JWT_SECRET=your_refresh_secret
+    ports:
+      - "3000:3000"
+    depends_on:
+      - postgres
+    networks:
+      - urbanflow-network
+    volumes:
+      - ./views/build:/app/views/build
+
+  # Frontend Vite (desarrollo)
+  frontend:
+    build:
+      context: ./views
+      dockerfile: Dockerfile
+    container_name: urbanflow-frontend
+    ports:
+      - "5173:5173"
+    networks:
+      - urbanflow-network
+    volumes:
+      - ./views:/app
+      - /app/node_modules
+
+  # Microservicio de Analytics
+  analytics:
+    build:
+      context: ./microservices/analytics
+      dockerfile: Dockerfile
+    container_name: urbanflow-analytics
+    environment:
+      - ANALYTICS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/urbanflow_db
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - urbanflow-network
+
+  # Microservicio de Predicciones
+  predictions:
+    build:
+      context: ./microservices/predictions-service
+      dockerfile: Dockerfile
+    container_name: urbanflow-predictions
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=urbanflow_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+    networks:
+      - urbanflow-network
+
+volumes:
+  postgres_data:
+
+networks:
+  urbanflow-network:
+    driver: bridge

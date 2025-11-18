@@ -1,5 +1,6 @@
 // controllers/citizenController.js
 import { asyncHandler } from '../middlewares/asyncHandler.js';
+import { getCitizenMapData } from '../models/geoportalModel.js';
 
 // Datos desde microservicio (reemplaza mocks)
 const ANALYTICS_BASE_URL = process.env.ANALYTICS_BASE_URL || 'http://localhost:8001/api';
@@ -46,14 +47,6 @@ const buildCitizenCabins = (sensorsStatus, recent) => {
     };
   });
 };
-
-const mockStations = [
-  { id: 'ST001', name: 'A1', position: { x: 20, y: 80 }, type: 'terminal' },
-  { id: 'ST002', name: 'B3', position: { x: 35, y: 65 }, type: 'intermediate' },
-  { id: 'ST003', name: 'C7', position: { x: 50, y: 50 }, type: 'intermediate' },
-  { id: 'ST004', name: 'D2', position: { x: 65, y: 35 }, type: 'intermediate' },
-  { id: 'ST005', name: 'E9', position: { x: 80, y: 20 }, type: 'terminal' }
-];
 
 // Función para calcular métricas ciudadanas
 const calculateCitizenMetrics = (cabins) => {
@@ -104,26 +97,66 @@ const getServiceUpdates = () => {
   ];
 };
 
-// Función para obtener información de rutas
-const getRouteInfo = () => {
+// Construir información de ruta basada en estaciones reales
+const buildRouteInfoFromStations = (stations = []) => {
+  if (!Array.isArray(stations) || stations.length === 0) {
+    return {
+      mainRoute: {
+        stations: [],
+        totalTime: 0,
+        activeStations: 0,
+      },
+      schedules: {
+        weekdays: '5:30 AM - 10:30 PM',
+        saturdays: '6:00 AM - 11:00 PM',
+        sundays: '7:00 AM - 9:30 PM',
+      },
+      frequency: {
+        peak: 'Cada 2-3 minutos',
+        normal: 'Cada 4-5 minutos',
+        night: 'Cada 6-8 minutos',
+      },
+    };
+  }
+
+  const averageSegmentMinutes = 5;
+  const sortedStations = [...stations].sort((a, b) => {
+    const lineDiff = (a.linea_id ?? 0) - (b.linea_id ?? 0);
+    if (lineDiff !== 0) return lineDiff;
+    return (a.estacion_id ?? 0) - (b.estacion_id ?? 0);
+  });
+
+  const stationNames = sortedStations.map((station) => station.nombre);
+  const totalTime = Math.max(stationNames.length - 1, 0) * averageSegmentMinutes;
+
   return {
     mainRoute: {
-      stations: ['A1', 'B3', 'C7', 'D2', 'E9'],
-      totalTime: 25,
-      activeStations: 5
+      stations: stationNames,
+      totalTime,
+      activeStations: sortedStations.length,
     },
     schedules: {
       weekdays: '5:30 AM - 10:30 PM',
       saturdays: '6:00 AM - 11:00 PM',
-      sundays: '7:00 AM - 9:30 PM'
+      sundays: '7:00 AM - 9:30 PM',
     },
     frequency: {
       peak: 'Cada 2-3 minutos',
       normal: 'Cada 4-5 minutos',
-      night: 'Cada 6-8 minutos'
-    }
+      night: 'Cada 6-8 minutos',
+    },
   };
 };
+
+const mapStationsForResponse = (stations = []) =>
+  stations.map((station) => ({
+    id: station.estacion_id,
+    name: station.nombre,
+    type: station.tipo,
+    lineaId: station.linea_id,
+    latitud: station.latitud,
+    longitud: station.longitud,
+  }));
 
 // Función para determinar el estado del sistema desde microservicio
 const mapSystemStatus = (system_status) => mapHealthToStatus(system_status);
@@ -145,7 +178,8 @@ export const getCitizenDashboard = asyncHandler(async (req, res) => {
   const metrics = calculateCitizenMetrics(cabins);
   const systemStatus = mapSystemStatus(systemHealth?.system_status || systemHealth?.status || 'healthy');
   const serviceUpdates = getServiceUpdates();
-  const routeInfo = getRouteInfo();
+  const { stations: dbStations } = await getCitizenMapData();
+  const routeInfo = buildRouteInfoFromStations(dbStations);
 
   res.json({
     ok: true,
@@ -154,7 +188,7 @@ export const getCitizenDashboard = asyncHandler(async (req, res) => {
       serviceUpdates,
       routeInfo,
       systemStatus,
-      stations: mockStations,
+      stations: mapStationsForResponse(dbStations),
       cabins,
       timestamp: new Date().toISOString(),
     },

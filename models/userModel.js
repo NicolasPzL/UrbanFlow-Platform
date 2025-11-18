@@ -40,8 +40,11 @@ export async function createUser({ nombre, correo, passwordHash, rol = 'usuario'
 }
 
 // --- Lecturas
-export async function findByEmail(correo) {
-  const { rows } = await pool.query(`SELECT * FROM usuarios WHERE correo = $1 AND deleted_at IS NULL`, [correo]);
+export async function findByEmail(correo, { includeDeleted = false } = {}) {
+  const query = includeDeleted
+    ? `SELECT * FROM usuarios WHERE LOWER(correo) = LOWER($1) LIMIT 1`
+    : `SELECT * FROM usuarios WHERE LOWER(correo) = LOWER($1) AND deleted_at IS NULL LIMIT 1`;
+  const { rows } = await pool.query(query, [correo]);
   return rows[0] || null; // contiene password_hash, se debe usar solo para server
 }
 
@@ -145,6 +148,19 @@ export async function updateUser(id, { nombre, correo, rol, passwordHash = null,
 export async function softDeleteUser(id) {
   const { rows } = await pool.query(
     `UPDATE usuarios SET deleted_at = NOW(), is_active = false WHERE usuario_id = $1 AND deleted_at IS NULL RETURNING *`, [id]
+  );
+  return toPublic(rows[0] || null);
+}
+
+export async function restoreUser(id) {
+  const { rows } = await pool.query(
+    `UPDATE usuarios
+        SET deleted_at = NULL,
+            is_active = true
+      WHERE usuario_id = $1
+        AND deleted_at IS NOT NULL
+    RETURNING *`,
+    [id]
   );
   return toPublic(rows[0] || null);
 }

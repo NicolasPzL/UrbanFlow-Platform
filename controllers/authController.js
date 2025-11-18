@@ -84,7 +84,21 @@ export const login = asyncHandler(async (req, res) => {
 });
 
 export const me = asyncHandler(async (req, res) => {
-  res.json({ ok: true, data: { user: req.user } });
+  const baseUser = await Users.findById(req.user.id);
+  if (!baseUser) {
+    return res.status(404).json({
+      ok: false,
+      error: { code: 'USER_NOT_FOUND', message: 'Usuario no encontrado' },
+    });
+  }
+
+  const responseUser = {
+    ...baseUser,
+    // Aprovechar datos del token por si contiene campos adicionales
+    must_change_password: baseUser.must_change_password ?? req.user.must_change_password ?? false,
+  };
+
+  res.json({ ok: true, data: { user: responseUser } });
 });
 
 export const logout = asyncHandler(async (req, res) => {

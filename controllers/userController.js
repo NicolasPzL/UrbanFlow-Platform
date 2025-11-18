@@ -6,6 +6,10 @@ import * as Roles from '../models/rolModel.js';
 import { hashPassword, generateTemporaryPassword } from '../utils/password.js';
 import { auditEvent } from '../middlewares/audit.js';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+const CLIENT_ROLE = 'cliente';
+const STAFF_ROLES = new Set(['admin', 'operador', 'analista']);
+
 // Listado de usuarios (usado por routes/userRoutes.js -> GET /api/users)
 export const listUsers = asyncHandler(async (req, res) => {
   const { search, rol, isActive, includeDeleted, limit, offset, sortBy, sortDir } = req.query;
@@ -29,61 +33,144 @@ export const getUser = asyncHandler(async (req, res) => {
   res.json({ ok: true, data: { ...u, roles: rolesAssigned.map(r => r.nombre_rol) } });
 });
 export const createUser = asyncHandler(async (req, res) => {
-  const { nombre, correo } = req.body || {};
+  const actorId = req.user?.id ?? null;
+  const actorEmail = req.user?.email ?? null;
+  const nombreRaw = typeof req.body?.nombre === 'string' ? req.body.nombre.trim() : '';
+  const correoRaw = typeof req.body?.correo === 'string' ? req.body.correo.trim().toLowerCase() : '';
   let { rol, roles } = req.body || {};
-  if (!nombre || !correo) {
-    throw new AppError('Datos inválidos: se requiere nombre y correo', { status: 400, code: 'VALIDATION_ERROR' });
+
+  const auditFailure = async (reason, extra = {}) => {
+    await auditEvent({
+      event: 'user.create.fail',
+      actorId,
+      actorEmail,
+      ip: req.ip ?? null,
+      metadata: { actor: actorId, email: correoRaw, reason, ...extra },
+    });
+  };
+
+  if (!nombreRaw) {
+    await auditFailure('INVALID_NAME');
+    throw new AppError('El nombre es requerido', {
+      status: 422,
+      code: 'VALIDATION_ERROR',
+      details: { field: 'nombre' },
+    });
+  }
+
+  if (!correoRaw || !correoRaw.includes('@') || !EMAIL_REGEX.test(correoRaw)) {
+    await auditFailure('INVALID_EMAIL');
+    throw new AppError('El correo es inválido', {
+      status: 422,
+      code: 'VALIDATION_ERROR',
+      details: { field: 'correo' },
+    });
   }
 
   // Normalizar roles a arreglo
-  let desiredRoles = [];
-  if (Array.isArray(roles)) desiredRoles = roles;
-  else if (Array.isArray(rol)) desiredRoles = rol;
-  else if (typeof rol === 'string' && rol.trim()) desiredRoles = [rol];
-  else desiredRoles = ['usuario'];
+  const toArray = (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string' && value.trim()) return [value];
+    return [];
+  };
+  let desiredRoles = [
+    ...new Set(
+      [...toArray(rol), ...toArray(roles)].map((r) => r.toString().trim().toLowerCase())
+    ),
+  ];
+  if (!desiredRoles.length) {
+    desiredRoles = ['operador'];
+  }
+
+  const hasClient = desiredRoles.includes(CLIENT_ROLE);
+  const hasStaff = desiredRoles.some((r) => STAFF_ROLES.has(r));
+
+  if (hasClient && hasStaff) {
+    await auditFailure('INVALID_ROLES_COMBO', { roles: desiredRoles });
+    throw new AppError('El rol "cliente" no puede combinarse con admin, analista u operador', {
+      status: 422,
+      code: 'INVALID_ROLES',
+      details: { roles: desiredRoles },
+    });
+  }
+
+  const existing = await Users.findByEmail(correoRaw, { includeDeleted: true });
+  if (existing) {
+    await auditFailure('EMAIL_EXISTS', { userId: existing.usuario_id });
+    throw new AppError('Ya existe un usuario con ese correo', {
+      status: 409,
+      code: 'EMAIL_EXISTS',
+      details: { field: 'correo' },
+    });
+  }
 
   // Validar roles existentes y activos
   for (const rname of desiredRoles) {
-    const r = await Roles.findByName(rname);
-    if (!r || r.deleted_at || r.is_active === false) {
-      throw new AppError(`Rol inválido: "${rname}". Usa un rol existente y activo.`, { status: 400, code: 'INVALID_ROLE' });
+    const roleRecord = await Roles.findByName(rname);
+    if (!roleRecord || roleRecord.deleted_at || roleRecord.is_active === false) {
+      await auditFailure('INVALID_ROLE', { role: rname });
+      throw new AppError(`Rol inválido: "${rname}". Usa un rol existente y activo.`, {
+        status: 422,
+        code: 'INVALID_ROLE',
+        details: { role: rname },
+      });
     }
   }
 
   // Generar contraseña temporal segura (12-16 caracteres)
   const tempPassword = generateTemporaryPassword(14);
   const passwordHash = await hashPassword(tempPassword, 12);
-  
+
   // Rol primario = Primero del arreglo
   const primaryRole = desiredRoles[0];
   // Usuarios no-admin deben cambiar contraseña en primer login
   const mustChangePassword = !desiredRoles.includes('admin');
-  
-  const user = await Users.createUser({ nombre, correo, passwordHash, rol: primaryRole, mustChangePassword });
 
-  // Sincronizar roles en rol_usuario
-  for (const rname of desiredRoles) {
-    await UserRoles.assignRoleSafe({ targetUserId: user.usuario_id, roleIdOrName: rname, actorUserId: req.user.id });
+  try {
+    const user = await Users.createUser({
+      nombre: nombreRaw,
+      correo: correoRaw,
+      passwordHash,
+      rol: primaryRole,
+      mustChangePassword,
+    });
+
+    // Sincronizar roles en rol_usuario
+    for (const rname of desiredRoles) {
+      await UserRoles.assignRoleSafe({
+        targetUserId: user.usuario_id,
+        roleIdOrName: rname,
+        actorUserId: req.user.id,
+      });
+    }
+
+    const rolesAssigned = await UserRoles.getUserRoles(user.usuario_id);
+    await auditEvent({
+      event: 'user.create.ok',
+      actorId,
+      actorEmail,
+      ip: req.ip ?? null,
+      metadata: {
+        actor: actorId,
+        userId: user.usuario_id,
+        roles: desiredRoles,
+        email: correoRaw,
+      },
+    });
+
+    res.status(201).json({
+      ok: true,
+      data: {
+        ...user,
+        correo: correoRaw,
+        roles: rolesAssigned.map((r) => r.nombre_rol),
+        temporaryPassword: tempPassword,
+      },
+    });
+  } catch (err) {
+    await auditFailure('PERSISTENCE_ERROR', { error: err.message });
+    throw err;
   }
-
-  const rolesAssigned = await UserRoles.getUserRoles(user.usuario_id);
-  await auditEvent({
-    event: 'USER_CREATE',
-    actorId: req.user.id ?? null,
-    actorEmail: req.user.email ?? null,
-    ip: req.ip ?? null,
-    metadata: { usuario_id: user.usuario_id, roles: desiredRoles },
-  });
-  
-  // Devolver la contraseña temporal SOLO UNA VEZ (no se guarda en ningún otro lugar)
-  res.status(201).json({ 
-    ok: true, 
-    data: { 
-      ...user, 
-      roles: rolesAssigned.map(r => r.nombre_rol),
-      temporaryPassword: tempPassword // Solo se devuelve una vez en la creación
-    } 
-  });
 });
 
 export const updateUser = asyncHandler(async (req, res) => {
@@ -166,4 +253,33 @@ export const removeUser = asyncHandler(async (req, res) => {
     metadata: { usuario_id: targetId },
   });
   res.json({ ok: true, data: removed });
+});
+
+export const restoreUser = asyncHandler(async (req, res) => {
+  const userId = Number(req.params.id);
+  const actorId = req.user?.id ?? null;
+  const actorEmail = req.user?.email ?? null;
+
+  const existing = await Users.findById(userId, { includeDeleted: true });
+  if (!existing) {
+    throw new AppError('Usuario no encontrado', { status: 404, code: 'NOT_FOUND' });
+  }
+  if (!existing.deleted_at) {
+    throw new AppError('El usuario ya está activo', { status: 409, code: 'ALREADY_ACTIVE' });
+  }
+
+  const restored = await Users.restoreUser(userId);
+  if (!restored) {
+    throw new AppError('Usuario no encontrado', { status: 404, code: 'NOT_FOUND' });
+  }
+
+  await auditEvent({
+    event: 'user.restore',
+    actorId,
+    actorEmail,
+    ip: req.ip ?? null,
+    metadata: { actor: actorId, userId, email: restored.correo },
+  });
+
+  res.json({ ok: true, data: restored });
 });
