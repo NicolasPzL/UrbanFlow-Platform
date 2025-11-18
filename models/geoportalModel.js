@@ -24,7 +24,55 @@ const normalizeCabinRow = (row) => ({
   last_timestamp: row.last_timestamp ? new Date(row.last_timestamp).toISOString() : null,
 });
 
-const computeStats = (cabins) => {
+const toRadians = (degrees) => (degrees * Math.PI) / 180;
+
+const haversineDistanceKm = (lat1, lon1, lat2, lon2) => {
+  const R = 6371; // km
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
+const computeRouteDistanceKm = (stations = []) => {
+  if (!Array.isArray(stations) || stations.length < 2) return 0;
+  const sorted = [...stations].filter((station) =>
+    Number.isFinite(station.latitud) && Number.isFinite(station.longitud)
+  ).sort((a, b) => {
+    const lineDiff = (a.linea_id ?? 0) - (b.linea_id ?? 0);
+    if (lineDiff !== 0) return lineDiff;
+    return (a.estacion_id ?? 0) - (b.estacion_id ?? 0);
+  });
+
+  if (sorted.length < 2) return 0;
+
+  let total = 0;
+  for (let i = 1; i < sorted.length; i += 1) {
+    total += haversineDistanceKm(
+      sorted[i - 1].latitud,
+      sorted[i - 1].longitud,
+      sorted[i].latitud,
+      sorted[i].longitud,
+    );
+  }
+  return total;
+};
+
+const formatEta = (seconds) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 1) return '< 1 min';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes === 0 ? `${hours} h` : `${hours} h ${remainingMinutes} min`;
+};
+
+const computeStats = (cabins, routeDistanceKm = 0) => {
   const activeCabins = cabins.length;
   const velocities = cabins
     .map((cabin) => cabin.velocidad)
@@ -32,6 +80,11 @@ const computeStats = (cabins) => {
 
   const avgVelocity = velocities.length
     ? Number((velocities.reduce((acc, value) => acc + value, 0) / velocities.length).toFixed(2))
+    : null;
+
+  const routeDistanceMeters = Number.isFinite(routeDistanceKm) ? routeDistanceKm * 1000 : null;
+  const avgEtaSeconds = (avgVelocity && routeDistanceMeters)
+    ? routeDistanceMeters / avgVelocity
     : null;
 
   const lastUpdate = cabins.reduce((latest, cabin) => {
@@ -56,7 +109,9 @@ const computeStats = (cabins) => {
     activeCabins,
     avgVelocity,
     totalPassengers: null,
-    avgETA: null,
+    avgETA: formatEta(avgEtaSeconds),
+    avgETASeconds: Number.isFinite(avgEtaSeconds) ? Number(avgEtaSeconds.toFixed(0)) : null,
+    routeDistanceKm: Number.isFinite(routeDistanceKm) ? Number(routeDistanceKm.toFixed(2)) : null,
     lastUpdate: lastUpdate ? new Date(lastUpdate).toISOString() : null,
     systemStatus,
   };
@@ -65,9 +120,10 @@ const computeStats = (cabins) => {
 export const getGeoportalData = async () => {
   try {
     const stationsQuery = `
-      SELECT estacion_id, nombre, tipo, latitud, longitud
+      SELECT estacion_id, linea_id, nombre, tipo, latitud, longitud
       FROM estaciones
       WHERE estado_operativo = $1
+      ORDER BY linea_id NULLS LAST, estacion_id
     `;
     const stationsResult = await pool.query(stationsQuery, ['operativa']);
 
@@ -122,11 +178,12 @@ export const getGeoportalData = async () => {
     const cabins = cabinsResult.rows.map(normalizeCabinRow);
 
     const stations = stationsResult.rows.map(normalizeStationRow);
+    const routeDistanceKm = computeRouteDistanceKm(stations);
 
     return {
       stations,
       cabins,
-      stats: computeStats(cabins),
+      stats: computeStats(cabins, routeDistanceKm),
     };
   } catch (error) {
     console.error('Error en geoportalModel.getGeoportalData:', error);

@@ -35,25 +35,20 @@ Este documento describe la nueva lógica de simulación usada por el microservic
 ### 3.2. Componentes faltantes
 
 - Cuando falta alguna componente o hay menos de 6 muestras:
-  - Se reconstruye una señal senoidal en fase a partir del timestamp para cada eje faltante.
-  - Se recalcula el vector total y se reajustan RMS y pico para conservar la magnitud original.
-  - `_generate_spectral_profile` usa fórmulas deterministas (sin randoms) basadas en:
-    ```
-    freq_media ≈ 10 + 1.4 * (velocidad_promedio)
-    freq_dom   ≈ freq_media + 0.6 * velocidad_promedio
-    energía total ≈ (RMS²) * muestras
-    ```
-  - La energía se reparte proporcionalmente entre bandas con pesos dependientes de la velocidad.
+  - Se generan 120 muestras internas por ventana formando senoides centradas en cero (fases 0°, 120° y 240°).
+  - La amplitud se ajusta para que el RMS coincida con el valor observado (o con la meta derivada de la velocidad).
+  - `_generate_spectral_profile` usa fórmulas deterministas basadas en la velocidad promedio; no se aplica ruido.
+  - La energía se reparte entre bandas con pesos dependientes de la velocidad, preservando la suma total.
 
 ### 3.3. Sin vibraciones pero con velocidad
 
-- `_simulate_vibration_metrics` genera un perfil senoidal determinista tomando la velocidad media como base.
-- A partir de ese perfil se obtienen RMS, pico, crest factor, skewness, kurtosis y ZCR sin recurrir a números aleatorios.
-- `_generate_spectral_profile` transforma esos valores en frecuencias y energía por bandas usando relaciones matemáticas.
+- `_simulate_vibration_metrics` reutiliza las mismas senoides deterministas, tomando como RMS objetivo `0.12 + 0.015 × velocidad_promedio`.
+- El crest factor resultante es √2 (1.41), y la señal contiene suficientes cruces por cero para calcular skewness y kurtosis sin aleatoriedad.
+- `_generate_spectral_profile` transforma el RMS en frecuencias y energía por bandas mediante relaciones analíticas.
 
 ### 3.4. Sin velocidad ni vibraciones
 
-- `_get_default_vibration_metrics` reutiliza `_simulate_vibration_metrics` con un perfil base de 5 m/s, lo que genera señales coherentes sin valores arbitrarios.
+- `_get_default_vibration_metrics` se apoya en `_simulate_vibration_metrics` con un perfil base equivalente a 5 m/s, garantizando señales coherentes sin valores arbitrarios.
 
 ## 4. Variables clave en el código
 

@@ -178,6 +178,72 @@ class TelemetryProcessor:
         
         return processed
     
+    def _create_synthetic_axes(self, velocity_profile, target_rms=None, duration_seconds=60.0, sample_count=120):
+        """Construye ejes sintéticos centrados en cero a partir de una serie de velocidades."""
+        velocity_series = np.atleast_1d(velocity_profile).astype(float)
+        velocity_series = velocity_series[np.isfinite(velocity_series)]
+        if velocity_series.size == 0:
+            velocity_series = np.full(12, 5.0, dtype=float)
+        avg_vel = float(np.clip(np.mean(velocity_series), 0.0, 30.0))
+
+        if target_rms is None:
+            target_rms = 0.12 + 0.015 * avg_vel
+        target_rms = float(max(target_rms, 0.05))
+
+        freq_hz = 5.0 + 0.6 * avg_vel
+        omega = 2.0 * math.pi * freq_hz
+        t = np.linspace(0.0, duration_seconds, int(sample_count), endpoint=False)
+
+        base_wave = np.sin(omega * t)
+        axes = np.vstack([
+            base_wave,
+            np.sin(omega * t + 2.0 * math.pi / 3.0),
+            np.sin(omega * t + 4.0 * math.pi / 3.0),
+        ])
+
+        axis_weights = np.array([0.95, 0.85, 1.05])
+        axes *= axis_weights[:, None]
+
+        magnitude = np.sqrt(np.sum(axes ** 2, axis=0))
+        current_rms = np.sqrt(np.mean(magnitude ** 2))
+        if current_rms > 0:
+            scale = target_rms / current_rms
+            axes *= scale
+
+        return axes, velocity_series
+
+    def _metrics_from_axes(self, axes, velocity_profile):
+        """Calcula métricas vibracionales a partir de ejes cartesianos."""
+        magnitude = np.sqrt(np.sum(np.square(axes), axis=0))
+        rms = float(np.sqrt(np.mean(magnitude ** 2)))
+        pico = float(np.max(np.abs(magnitude)))
+        crest_factor = pico / rms if rms > 0 else 0.0
+
+        centered = magnitude - np.mean(magnitude)
+        variance = np.var(centered)
+        if variance > 0:
+            skewness = float(np.mean(centered ** 3) / (variance ** 1.5))
+            kurtosis = float(np.mean(centered ** 4) / (variance ** 2) - 3.0)
+        else:
+            skewness = 0.0
+            kurtosis = 0.0
+
+        zero_crossings = np.sum(np.diff(np.sign(centered)) != 0)
+        zcr = float(zero_crossings / len(centered)) if len(centered) > 0 else 0.0
+
+        spectral = self._calculate_spectral_metrics(magnitude, velocity_profile)
+
+        metrics = {
+            'rms': rms,
+            'kurtosis': kurtosis,
+            'skewness': skewness,
+            'zcr': zcr,
+            'pico': pico,
+            'crest_factor': crest_factor,
+        }
+        metrics.update(spectral)
+        return metrics
+
     def _calculate_row_metrics(self, current_row, all_data, current_index, distancia_acumulada):
         """Calcula métricas para una fila específica"""
         try:
@@ -231,49 +297,23 @@ class TelemetryProcessor:
     def _calculate_single_row_vibration_metrics(self, row):
         """Calcula métricas vibracionales para una sola fila"""
         try:
-            velocity_ms_value: float | None = None
-            if hasattr(row, 'velocidad_kmh') and row.velocidad_kmh is not None:
-                velocity_ms_value = float(row.velocidad_kmh) / 3.6
+            velocity_ms_value = float(row.velocidad_kmh) / 3.6 if hasattr(row, 'velocidad_kmh') and row.velocidad_kmh is not None else None
 
-            velocity_profile = np.full(
-                12,
-                velocity_ms_value if velocity_ms_value is not None else 5.0,
-                dtype=float,
-            )
-            simulated_metrics = self._simulate_vibration_metrics(velocity_profile)
-
-            timestamp_obj = getattr(row, 'timestamp', None)
-            base_phase = 0.0
-            if isinstance(timestamp_obj, datetime):
-                base_phase = timestamp_obj.timestamp() / 30.0
-
-            axis_names = ['vibracion_x', 'vibracion_y', 'vibracion_z']
-            phase_offsets = [0.0, 2.0 * math.pi / 3.0, 4.0 * math.pi / 3.0]
-            axis_scales = [0.92, 0.85, 1.05]
-
-            amplitude_reference = max(simulated_metrics['rms'], 0.05)
-            components = []
-
-            for idx, axis in enumerate(axis_names):
+            available_components = []
+            for axis in ['vibracion_x', 'vibracion_y', 'vibracion_z']:
                 value = getattr(row, axis, None)
-                if value is None:
-                    scale = amplitude_reference * axis_scales[idx]
-                    phase = base_phase + phase_offsets[idx]
-                    value = scale * math.sin(phase)
-                components.append(float(value))
+                if value is not None:
+                    available_components.append(float(value))
 
-            vector_magnitude = float(np.sqrt(np.sum(np.square(components))))
-            if vector_magnitude > simulated_metrics['rms']:
-                simulated_metrics['rms'] = vector_magnitude
-            if vector_magnitude > simulated_metrics['pico']:
-                simulated_metrics['pico'] = vector_magnitude
-            simulated_metrics['crest_factor'] = (
-                simulated_metrics['pico'] / simulated_metrics['rms']
-                if simulated_metrics['rms'] > 0
-                else simulated_metrics['crest_factor']
-            )
+            target_rms = None
+            if available_components:
+                vector_magnitude = math.sqrt(sum(component ** 2 for component in available_components))
+                if vector_magnitude > 0:
+                    target_rms = vector_magnitude / math.sqrt(2.0)
 
-            return simulated_metrics
+            velocity_profile = np.array([velocity_ms_value]) if velocity_ms_value is not None else np.array([])
+            synthetic_axes, velocity_series = self._create_synthetic_axes(velocity_profile, target_rms=target_rms)
+            return self._metrics_from_axes(synthetic_axes, velocity_series)
             
         except Exception as e:
             print(f"Error calculando métricas vibracionales: {e}")
@@ -467,99 +507,25 @@ class TelemetryProcessor:
         vib_y = window_data['vibracion_y'].dropna().values if 'vibracion_y' in window_data else np.array([])
         vib_z = window_data['vibracion_z'].dropna().values if 'vibracion_z' in window_data else np.array([])
         
+        velocity_series_kmh = window_data['velocidad_kmh'].dropna().values if 'velocidad_kmh' in window_data else np.array([])
+        velocity_ms = velocity_series_kmh / 3.6 if velocity_series_kmh.size > 0 else np.array([])
+        
         has_vibration_data = (
             len(vib_x) > 0 and len(vib_y) > 0 and len(vib_z) > 0 and
             (np.max(np.abs(vib_x)) > 1e-6 or np.max(np.abs(vib_y)) > 1e-6 or np.max(np.abs(vib_z)) > 1e-6)
         )
         
-        velocity_series = window_data['velocidad_kmh'].dropna().values if 'velocidad_kmh' in window_data else np.array([])
-        velocity_ms = velocity_series / 3.6 if len(velocity_series) > 0 else np.array([])
+        if has_vibration_data:
+            axes = np.vstack([vib_x, vib_y, vib_z])
+            return self._metrics_from_axes(axes, velocity_ms)
         
-        if not has_vibration_data:
-            if len(velocity_ms) == 0:
-                return self._get_default_vibration_metrics()
-            return self._simulate_vibration_metrics(velocity_ms)
-        
-        # Vector de vibración total
-        vib_total = np.sqrt(vib_x**2 + vib_y**2 + vib_z**2)
-        
-        # RMS (Root Mean Square)
-        rms = float(np.sqrt(np.mean(vib_total**2)))
-        
-        # Kurtosis
-        kurtosis = float(self._calculate_kurtosis(vib_total))
-        
-        # Skewness
-        skewness = float(self._calculate_skewness(vib_total))
-        
-        # Zero Crossing Rate
-        zcr = float(self._calculate_zcr(vib_total))
-        
-        # Pico
-        pico = float(np.max(vib_total))
-        
-        # Crest Factor
-        crest_factor = float(pico / rms) if rms > 0 else 0.0
-        
-        # Análisis espectral
-        spectral_metrics = self._calculate_spectral_metrics(vib_total, velocity_ms)
-        
-        return {
-            'rms': rms,
-            'kurtosis': kurtosis,
-            'skewness': skewness,
-            'zcr': zcr,
-            'pico': pico,
-            'crest_factor': crest_factor,
-            **spectral_metrics
-        }
+        synthetic_axes, velocity_profile = self._create_synthetic_axes(velocity_ms)
+        return self._metrics_from_axes(synthetic_axes, velocity_profile)
     
     def _simulate_vibration_metrics(self, velocity_ms):
         """Genera métricas simuladas cuando no hay vibraciones registradas."""
-        velocity_series = np.atleast_1d(velocity_ms).astype(float)
-        if velocity_series.size == 0 or not np.isfinite(velocity_series).any():
-            velocity_series = np.full(12, 5.0, dtype=float)
-        else:
-            velocity_series = velocity_series[np.isfinite(velocity_series)]
-            if velocity_series.size < 12:
-                velocity_series = np.tile(velocity_series, int(np.ceil(12 / velocity_series.size)))[:12]
-
-        avg_vel = float(np.mean(velocity_series))
-        sample_count = max(len(velocity_series) * 4, 32)
-        angles = np.linspace(0.0, math.pi, sample_count)
-
-        base_level = 0.24 + 0.018 * avg_vel
-        variation = 0.07 + 0.004 * avg_vel
-        synthetic_series = base_level + variation * np.sin(angles)
-        synthetic_series = np.clip(synthetic_series, 0.03, None)
-
-        rms = float(np.sqrt(np.mean(synthetic_series**2)))
-        pico = float(np.max(synthetic_series))
-        crest_factor = pico / rms if rms > 0 else 0.0
-
-        centered = synthetic_series - np.mean(synthetic_series)
-        variance = np.var(centered)
-        if variance > 0:
-            skewness = float(np.mean(centered**3) / (variance ** 1.5))
-            kurtosis = float(np.mean(centered**4) / (variance ** 2) - 3.0)
-        else:
-            skewness = 0.0
-            kurtosis = 0.0
-
-        zero_crossings = np.sum(np.diff(np.sign(centered)) != 0)
-        zcr = float(zero_crossings / len(centered))
-
-        profile = self._generate_spectral_profile(rms, velocity_series, sample_count=sample_count)
-
-        return {
-            'rms': rms,
-            'kurtosis': kurtosis,
-            'skewness': skewness,
-            'zcr': zcr,
-            'pico': pico,
-            'crest_factor': crest_factor,
-            **profile
-        }
+        synthetic_axes, velocity_series = self._create_synthetic_axes(velocity_ms)
+        return self._metrics_from_axes(synthetic_axes, velocity_series)
     
     def _generate_spectral_profile(self, rms, velocity_ms=None, sample_count=10):
         """Genera un perfil espectral consistente con el nivel de vibración y velocidad."""
@@ -635,13 +601,12 @@ class TelemetryProcessor:
     def _calculate_spectral_metrics(self, vib_data, velocity_ms=None):
         """Calcula métricas espectrales"""
         if len(vib_data) == 0:
-            return self._get_default_vibration_metrics()
+            return self._generate_spectral_profile(0.08, velocity_ms, sample_count=1)
 
         min_samples = 6
         if len(vib_data) < min_samples:
             rms = float(np.sqrt(np.mean(vib_data**2))) if len(vib_data) > 0 else 0.08
-            profile = self._generate_spectral_profile(rms, velocity_ms, sample_count=max(len(vib_data), 1))
-            return profile
+            return self._generate_spectral_profile(rms, velocity_ms, sample_count=max(len(vib_data), 1))
         
         # FFT
         fft_data = fft(vib_data)

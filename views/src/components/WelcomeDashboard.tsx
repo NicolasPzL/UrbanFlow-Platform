@@ -41,12 +41,12 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
     return "Buenas noches";
   };
 
-  const getRoleDisplay = (role: string) => {
+  const getRoleDisplay = (role: string) => {
     switch (role) {
-      case 'admin': return 'Administrador';
-      case 'analista': return 'Analista';
-      case 'operador': return 'Operador';
-      case 'cliente': return 'cliente'; 
+      case 'admin': return 'Administrador';
+      case 'analista': return 'Analista';
+      case 'operador': return 'Operador';
+      case 'cliente': return 'Cliente';
       default: return 'Usuario';
     }
   };
@@ -95,7 +95,7 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
     }
   ];
 
-  const systemStats: SystemStat[] = [
+  const systemStats: SystemStat[] = [
     {
       label: "Cabinas Activas",
       value: "24/24",
@@ -122,16 +122,24 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
     }
   ];
 
-  return (
+  const isClient = user?.rol === 'cliente';
+  const displayName = user?.name?.trim()
+    ? user.name.trim()
+    : (user?.email ? user.email.split('@')[0] : 'Usuario');
+  const toolsGridClasses = isClient
+    ? 'grid grid-cols-1 md:grid-cols-2 gap-6'
+    : 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6';
+
+  return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Header */}
         <div className="mb-8">
           <h1 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-2">
-            {getGreeting()}, {user?.name}
+            {getGreeting()}, {displayName}
           </h1>
-          <p className="text-lg text-gray-600">
-            Bienvenido al sistema Urban Flow - {getRoleDisplay(user?.rol || '')}
+          <p className="text-lg text-gray-600">
+            Bienvenido al sistema Urban Flow, {displayName} ({getRoleDisplay(user?.rol || '')})
           </p>
         </div>
 
@@ -165,11 +173,11 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className={toolsGridClasses}>
             {tools.map(({ icon: Icon, ...tool }, index) => (
                 <Card 
                   key={index} 
-                  className={`border-0 shadow-lg hover:shadow-xl transition-all duration-200 ${
+                  className={`flex flex-col h-full border-0 shadow-lg hover:shadow-xl transition-all duration-200 ${
                     tool.available 
                       ? 'cursor-pointer hover:scale-[1.02]' 
                       : 'opacity-50 cursor-not-allowed'
@@ -195,33 +203,33 @@ export function WelcomeDashboard({ authState, onViewChange }: WelcomeDashboardPr
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-0">
-                    <p className="text-gray-600 mb-4 leading-relaxed">
-                      {tool.description}
-                    </p>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-gray-700">Características:</p>
-                      <ul className="text-sm text-gray-600 space-y-1">
-                        {tool.features.map((feature, featureIndex) => (
-                          <li key={featureIndex} className="flex items-center space-x-2">
-                            <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
+                  <CardContent className="pt-0 flex-1 flex flex-col">
+                    <div className="text-gray-600 leading-relaxed flex-1 space-y-4">
+                      <p>{tool.description}</p>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-gray-700">Características:</p>
+                        <ul className="text-sm text-gray-600 space-y-1">
+                          {tool.features.map((feature, featureIndex) => (
+                            <li key={featureIndex} className="flex items-center space-x-2">
+                              <div className="w-1.5 h-1.5 bg-blue-600 rounded-full"></div>
+                              <span>{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                    {tool.available && (
-                      <Button 
-                        className="w-full mt-4" 
-                        // FIX: Add explicit type for the event object 'e'
-                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                          e.stopPropagation();
-                          tool.action();
-                        }}
-                      >
-                        Acceder
-                      </Button>
-                    )}
+                    {tool.available && (
+                      <Button 
+                        className="w-full mt-auto"
+                        // FIX: Add explicit type for the event object 'e'
+                        onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                          e.stopPropagation();
+                          tool.action();
+                        }}
+                      >
+                        Acceder
+                      </Button>
+                    )}
                 </CardContent>
                   </Card>
             ))}
