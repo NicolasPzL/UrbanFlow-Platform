@@ -209,15 +209,18 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
             if "does not exist" in error_msg or "UndefinedColumn" in error_msg:
                 if "estado_actual" in error_msg and "cabina_estado_hist" in error_msg:
                     print("Hint: cabina_estado_hist uses 'estado' column, not 'estado_actual'")
+                elif "medicion_id" in error_msg and "telemetria_cruda" in error_msg:
+                    print("Hint: telemetria_cruda does NOT have medicion_id. predicciones only relates to mediciones, not telemetria_cruda. Use 'mediciones' table if you need clase_predicha.")
+                elif "clase_predicha" in error_msg and ("telemetria_cruda" in error_msg or ("m." in error_msg and "telemetria_cruda" in sql_query.lower())):
+                    print("Hint: clase_predicha is only available through predicciones, which only relates to mediciones, NOT telemetria_cruda. Use 'mediciones' as main table if you need clase_predicha.")
                 elif "clase_predicha" in error_msg and ("mediciones" in error_msg or "m." in error_msg):
-                    print("Hint: clase_predicha is only in predicciones table, not mediciones. Need JOIN with predicciones.")
+                    print("Hint: clase_predicha is only in predicciones table, not mediciones. Need JOIN predicciones ON mediciones.medicion_id = predicciones.medicion_id")
             
             return {
                 "success": False,
                 "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
                 "query_type": "data_query",
-                "sql_query": sql_query,
-                "error": results["error"]
+                # No incluir sql_query ni error en la respuesta
             }
         
         # Format response using LLM
@@ -227,7 +230,7 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
             "success": True,
             "response": response_text,
             "query_type": "data_query",
-            "sql_query": sql_query,
+            # No incluir sql_query en la respuesta para no mostrarlo al usuario
             "data": results["data"],
             "row_count": results["row_count"],
             "columns": results["columns"]
@@ -296,7 +299,7 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
                     "success": True,
                     "response": analysis,
                     "query_type": "analysis",
-                    "sql_query": sql_query,
+                    # No incluir sql_query en la respuesta
                     "data": results["data"]
                 }
         
@@ -429,15 +432,31 @@ Consulta SQL:"""
         try:
             results_text = self.query_builder.format_results_as_text(results)
             
-            prompt = f"""Basándote en los siguientes resultados de la consulta, proporciona una respuesta clara en lenguaje natural a la pregunta del usuario.
+            # Contexto adicional para interpretar mejor los resultados
+            interpretation_guidance = ""
+            if results.get("row_count") == 1 and results.get("data"):
+                # Si hay una sola fila con un COUNT u otra agregación, interpretarla correctamente
+                first_row = results["data"][0]
+                for key, value in first_row.items():
+                    if 'count' in key.lower() or 'total' in key.lower() or 'cantidad' in key.lower():
+                        interpretation_guidance = f"\n\nIMPORTANTE: El valor '{value}' en la columna '{key}' representa el resultado de una consulta de conteo o agregación. Si el valor es 0, significa que NO hay registros que cumplan la condición. Si el valor es mayor a 0, ese es el número real de registros encontrados."
+                    elif value == 0 or value == 0.0:
+                        interpretation_guidance = f"\n\nIMPORTANTE: El valor {value} en '{key}' indica que NO se encontraron registros que cumplan la condición. No asumas que esto significa que el sistema está fuera de servicio - simplemente no hay datos que cumplan los criterios específicos de la consulta."
+            
+            prompt = f"""Basándote en los siguientes resultados de la consulta, proporciona una respuesta clara y precisa en lenguaje natural a la pregunta del usuario.
 
 Pregunta del Usuario: {question}
 
 Resultados de la Consulta:
 {results_text}
+{interpretation_guidance}
 
-Proporciona una respuesta concisa e informativa que responda directamente la pregunta. Incluye números clave e insights.
-Responde SIEMPRE en español."""
+IMPORTANTE:
+- Si los resultados muestran un COUNT de 0, simplemente di que no se encontraron registros que cumplan esa condición específica, NO digas que el sistema está fuera de servicio o que hay un problema.
+- Si hay valores numéricos, úsalos directamente en tu respuesta.
+- Sé preciso y no hagas suposiciones sobre el estado general del sistema basándote solo en una consulta específica.
+- Responde SIEMPRE en español.
+- Sé conciso y directo."""
             
             from langchain_core.messages import HumanMessage, SystemMessage
             
@@ -538,12 +557,27 @@ Responde SIEMPRE en español."""
         try:
             results_text = self.query_builder.format_results_as_text(results)
             
+            # Contexto adicional para interpretar mejor los resultados
+            interpretation_guidance = ""
+            if results.get("row_count") == 1 and results.get("data"):
+                first_row = results["data"][0]
+                for key, value in first_row.items():
+                    if 'count' in key.lower() or 'total' in key.lower() or 'cantidad' in key.lower():
+                        interpretation_guidance = f"\n\nIMPORTANTE: El valor '{value}' en la columna '{key}' representa el resultado de una consulta de conteo. Si el valor es 0, significa que NO hay registros que cumplan la condición específica. Si el valor es mayor a 0, ese es el número real de registros encontrados."
+                    elif value == 0 or value == 0.0:
+                        interpretation_guidance = f"\n\nIMPORTANTE: El valor {value} en '{key}' indica que NO se encontraron registros que cumplan la condición. No asumas que esto significa que el sistema está fuera de servicio - simplemente no hay datos que cumplan los criterios específicos."
+            
             prompt = f"""{ANALYSIS_PROMPT}
 
 Pregunta del Usuario: {question}
 
 Datos a Analizar:
 {results_text}
+{interpretation_guidance}
+
+IMPORTANTE:
+- Si los resultados muestran un COUNT de 0, simplemente di que no se encontraron registros que cumplan esa condición específica, NO digas que el sistema está fuera de servicio.
+- Sé preciso y no hagas suposiciones sobre el estado general del sistema basándote solo en una consulta específica.
 
 Proporciona:
 1. Insights y patrones clave

@@ -31,11 +31,17 @@ Importante:
 3. Formatea las fechas correctamente (sintaxis PostgreSQL)
 4. Retorna nombres de columnas claros y legibles
 5. Usa agregaciones (AVG, COUNT, SUM) cuando sea apropiado para resúmenes
-6. CRÍTICO: 'clase_predicha' está SOLO en la tabla 'predicciones', NO en 'mediciones'
+6. CRÍTICO: 'clase_predicha' está SOLO en la tabla 'predicciones', NO en 'mediciones' ni en 'telemetria_cruda'
    Si necesitas clase_predicha con datos de mediciones, debes hacer:
    mediciones m JOIN predicciones p ON m.medicion_id = p.medicion_id
 7. La tabla 'mediciones' tiene 'estado_procesado', NO 'clase_predicha'
    La tabla 'predicciones' tiene 'clase_predicha', relacionada vía medicion_id
+8. CRÍTICO: 'telemetria_cruda' y 'mediciones' son TABLAS DIFERENTES:
+   - 'telemetria_cruda' tiene telemetria_id (PK), NO tiene medicion_id
+   - 'mediciones' tiene medicion_id (PK)
+   - 'predicciones' SOLO se relaciona con 'mediciones', NUNCA con 'telemetria_cruda'
+   - Si usas 'telemetria_cruda' como tabla principal, NO puedes hacer JOIN directo con 'predicciones'
+   - Si necesitas clase_predicha, usa 'mediciones' como tabla principal
 
 Genera consultas SQL que sean seguras, eficientes y respondan con precisión la pregunta del usuario.
 Responde SIEMPRE en español cuando expliques o formatees respuestas.
@@ -85,20 +91,23 @@ Responde SIEMPRE en español.
 SYSTEM_CONTEXT = """UrbanFlow Platform Database Schema:
 
 TABLES:
-- telemetria_cruda: Raw telemetry data from sensors
-  * sensor_id, timestamp, numero_cabina, codigo_cabina
+- telemetria_cruda: Raw telemetry data from sensors (DATOS CRUDOS)
+  * telemetria_id (PK), sensor_id, timestamp, numero_cabina, codigo_cabina
   * lat, lon, alt, velocidad_kmh, aceleracion_m_s2
   * temperatura_c, vibracion_x, vibracion_y, vibracion_z
   * direccion, pos_m
+  * CRÍTICO: Esta tabla NO tiene 'medicion_id'. NO se puede hacer JOIN con 'predicciones' desde esta tabla.
+  * CRÍTICO: 'clase_predicha' NO está disponible para 'telemetria_cruda'. Solo está en 'predicciones' relacionado con 'mediciones'.
 
-- mediciones: Processed measurements with extracted features
-  * medicion_id, sensor_id, timestamp
+- mediciones: Processed measurements with extracted features (DATOS PROCESADOS)
+  * medicion_id (PK), sensor_id, timestamp
   * latitud, longitud, altitud, velocidad
   * rms, kurtosis, skewness, zcr, pico, crest_factor
   * frecuencia_media, frecuencia_dominante, amplitud_max_espectral
   * energia_banda_1, energia_banda_2, energia_banda_3
   * estado_procesado (operativo/inusual/alerta)
   * IMPORTANTE: Esta tabla NO tiene 'clase_predicha'. Si necesitas clase_predicha, debes hacer JOIN con la tabla 'predicciones'
+  * CRÍTICO: 'telemetria_cruda' y 'mediciones' son TABLAS DIFERENTES. 'telemetria_cruda' NO tiene 'medicion_id'.
 
 - sensores: Sensor registry
   * sensor_id (PK), cabina_id (unique)
@@ -107,9 +116,11 @@ TABLES:
   * cabina_id (PK), codigo_interno, estado_actual
 
 - predicciones: ML prediction results
-  * prediccion_id (PK), medicion_id (FK), modelo_id (FK)
-  * clase_predicha (SOLO disponible aquí, NO en mediciones), probabilidades (JSON), timestamp_prediccion
-  * Para usar clase_predicha con mediciones, hacer: mediciones m JOIN predicciones p ON m.medicion_id = p.medicion_id
+  * prediccion_id (PK), medicion_id (FK) - relacionado SOLO con mediciones.medicion_id, NO con telemetria_cruda
+  * modelo_id (FK), clase_predicha, probabilidades (JSON), timestamp_prediccion
+  * CRÍTICO: 'predicciones' SOLO se relaciona con 'mediciones' via medicion_id. NUNCA con 'telemetria_cruda'.
+  * Para usar clase_predicha con mediciones: mediciones m JOIN predicciones p ON m.medicion_id = p.medicion_id
+  * Si necesitas datos crudos Y predicciones, primero JOIN mediciones con telemetria_cruda (ambas tienen sensor_id), luego mediciones con predicciones
 
 - modelos_ml: ML model registry
   * modelo_id (PK), nombre, version, framework
@@ -134,9 +145,18 @@ TABLES:
 RELATIONSHIPS:
 - sensores.cabina_id → cabinas.cabina_id (one-to-one)
 - mediciones.sensor_id → sensores.sensor_id (one-to-many)
-- predicciones.medicion_id → mediciones.medicion_id (many-to-one)
-- predicciones.modelo_id → modelos_ml.modelo_id (many-to-one)
 - telemetria_cruda.sensor_id → sensores.sensor_id (one-to-many)
+- predicciones.medicion_id → mediciones.medicion_id (many-to-one) - SOLO mediciones, NO telemetria_cruda
+- predicciones.modelo_id → modelos_ml.modelo_id (many-to-one)
+
+CRÍTICO - DIFERENCIAS IMPORTANTES:
+- 'telemetria_cruda' = datos crudos, tiene telemetria_id (PK), NO tiene medicion_id
+- 'mediciones' = datos procesados, tiene medicion_id (PK)
+- 'predicciones' SOLO se relaciona con 'mediciones', NUNCA con 'telemetria_cruda'
+- Si necesitas clase_predicha con datos de telemetria_cruda, debes:
+  1. JOIN telemetria_cruda tc JOIN mediciones m ON tc.sensor_id = m.sensor_id AND tc.timestamp ≈ m.timestamp
+  2. Luego JOIN predicciones p ON m.medicion_id = p.medicion_id
+- O mejor: usa directamente mediciones que ya tienen los datos procesados y métricas calculadas
 """
 
 EXAMPLE_QUERIES = """
@@ -152,8 +172,17 @@ WHERE ce.estado = 'alerta'
 AND ce.timestamp_inicio >= NOW() - INTERVAL '1 hour'
 AND (ce.timestamp_fin IS NULL OR ce.timestamp_fin >= NOW() - INTERVAL '1 hour');
 
+Q: "How many cabins are operational?"
+SQL: SELECT COUNT(*) as operativas_count FROM cabinas WHERE estado_actual = 'operativo';
+
 Q: "Show me the last 10 measurements from sensor 1"
 SQL: SELECT * FROM mediciones WHERE sensor_id = 1 ORDER BY timestamp DESC LIMIT 10;
+
+Q: "What's the average RMS value for the last 24 hours?"
+SQL: 
+SELECT AVG(rms) as avg_rms 
+FROM mediciones 
+WHERE timestamp >= NOW() - INTERVAL '24 hours';
 
 Q: "What's the average RMS value for each cabin today?"
 SQL: 
@@ -208,6 +237,38 @@ WHERE m.timestamp >= NOW() - INTERVAL '24 hours'
 GROUP BY c.codigo_interno, p.clase_predicha
 ORDER BY avg_rms DESC
 LIMIT 10;
+
+Q: "Show raw telemetry data with processed measurements"
+SQL:
+SELECT 
+    tc.timestamp as raw_timestamp,
+    tc.vibracion_x,
+    tc.vibracion_y,
+    m.medicion_id,
+    m.rms,
+    m.kurtosis
+FROM telemetria_cruda tc
+LEFT JOIN mediciones m ON tc.sensor_id = m.sensor_id 
+    AND ABS(EXTRACT(EPOCH FROM (tc.timestamp - m.timestamp))) < 60
+WHERE tc.timestamp >= NOW() - INTERVAL '1 hour'
+LIMIT 100;
+
+Q: "Show processed measurements with predictions"
+SQL:
+SELECT 
+    m.medicion_id,
+    m.rms,
+    m.kurtosis,
+    p.clase_predicha
+FROM mediciones m
+LEFT JOIN predicciones p ON m.medicion_id = p.medicion_id
+WHERE m.timestamp >= NOW() - INTERVAL '24 hours'
+LIMIT 100;
+
+NOTA IMPORTANTE: 
+- Si usas 'telemetria_cruda' como tabla principal, NO puedes hacer JOIN directo con 'predicciones'
+- 'predicciones.medicion_id' solo existe en 'mediciones', NO en 'telemetria_cruda'
+- Si necesitas clase_predicha, usa 'mediciones' como tabla principal, no 'telemetria_cruda'
 """
 
 

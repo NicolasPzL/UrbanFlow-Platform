@@ -355,16 +355,6 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               </div>
             </div>
             
-            {message.metadata.sql_query && (
-              <details className="mt-2">
-                <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700 dark:hover:text-slate-300">
-                  Ver Consulta SQL
-                </summary>
-                <pre className="text-xs bg-slate-100 dark:bg-slate-950 p-2 rounded mt-2 overflow-x-auto">
-                  <code>{message.metadata.sql_query}</code>
-                </pre>
-              </details>
-            )}
           </div>
         </div>
       );
@@ -378,10 +368,12 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
   };
 
   const suggestedQuestions = [
+    "¿Cuántas cabinas están operativas?",
+    "Muéstrame las últimas 10 mediciones del sensor 1",
+    "¿Cuál es el valor promedio de RMS de las últimas 24 horas?",
     "¿Cuántas cabinas están en estado de alerta?",
-    "Muéstrame las mediciones recientes del sensor 1",
-    "¿Cuál es el valor promedio de RMS hoy?",
-    "Genera un reporte de salud del sistema"
+    "Genera un reporte de salud del sistema",
+    "¿Qué hace UrbanFlow?"
   ];
 
   const handleSuggestedQuestion = (question: string) => {
