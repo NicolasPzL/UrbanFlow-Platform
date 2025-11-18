@@ -227,6 +227,15 @@ app.use('/api/citizen/analytics', requireAuth, requireRole('cliente'), (req, res
   return proxyToAnalytics(req, res, `/analytics${req.path}`);
 });
 
+// Chatbot: rutas del chatbot (requiere autenticación de staff)
+app.use('/api/chatbot', requireAuth, requireRole('admin','operador','analista','cliente'), (req, res) => {
+  // req.path NO incluye el prefijo del mount point en Express
+  // Ejemplo: petición /api/chatbot/capabilities -> req.path = /capabilities
+  // Necesitamos agregar /chatbot al path para que coincida con las rutas del microservicio
+  const upstreamPath = `/chatbot${req.path}`;
+  return proxyToAnalytics(req, res, upstreamPath);
+});
+
 // =============================================================================
 // SERVIR FRONTEND (BUILD VITE) Y FALLBACK SPA
 // =============================================================================

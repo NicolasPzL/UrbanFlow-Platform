@@ -12,7 +12,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 MODEL_NAME=llama3
 
 # 3. Run
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 
 # 4. Test (opcional)
 python test_chatbot.py
@@ -98,10 +98,10 @@ CHATBOT_ENABLE_ML_ANALYSIS=true
 python test_chatbot.py
 
 # Manual API test
-curl http://localhost:8000/api/chatbot/capabilities
+curl http://localhost:8001/api/chatbot/capabilities
 
 # Query test
-curl -X POST http://localhost:8000/api/chatbot/query \
+curl -X POST http://localhost:8001/api/chatbot/query \
   -H "Content-Type: application/json" \
   -d '{"question": "How many cabins are there?"}'
 ```
@@ -130,9 +130,9 @@ views/src/components/
 
 ### Service not starting?
 ```bash
-# Check port 8000 is free
-netstat -ano | findstr :8000  # Windows
-lsof -i :8000                 # Linux/Mac
+# Check port 8001 is free
+netstat -ano | findstr :8001  # Windows
+lsof -i :8001                 # Linux/Mac
 
 # Check logs
 tail -f logs/analytics.log
@@ -204,7 +204,7 @@ DATABASE_URL=postgresql://...
 → Check Dashboard.tsx imports Chatbot component
 
 ### "Service not available"
-→ Verify analytics service running on port 8000
+→ Verify analytics service running on port 8001
 
 ## 🎨 UI Components Used
 

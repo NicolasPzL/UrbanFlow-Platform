@@ -119,9 +119,19 @@ class QueryBuilder:
     def identify_query_type(self, question: str) -> str:
         """
         Identify what type of query the user is asking for.
-        Returns: 'data_query', 'analysis', 'prediction', 'report', 'unknown'
+        Returns: 'data_query', 'analysis', 'prediction', 'report', 'informational', 'unknown'
         """
         question_lower = question.lower()
+        
+        # Informational/general questions (about the system, what it does, how it works)
+        informational_keywords = [
+            'what is', 'what does', 'que es', 'que hace', 'que es urbanflow',
+            'what is urbanflow', 'what does urbanflow', 'explain', 'describe',
+            'how does', 'como funciona', 'what can', 'que puede', 'help',
+            'capabilities', 'capacidades', 'who are you', 'quien eres'
+        ]
+        if any(keyword in question_lower for keyword in informational_keywords):
+            return 'informational'
         
         # Prediction-related keywords
         if any(word in question_lower for word in ['predict', 'forecast', 'will', 'future', 'maintenance']):
@@ -135,8 +145,12 @@ class QueryBuilder:
         if any(word in question_lower for word in ['report', 'summary', 'overview', 'dashboard']):
             return 'report'
         
-        # Data query keywords
-        if any(word in question_lower for word in ['show', 'list', 'get', 'find', 'how many', 'what', 'which']):
+        # Data query keywords (but not if it's informational)
+        if any(word in question_lower for word in ['show', 'list', 'get', 'find', 'how many', 'which']):
+            return 'data_query'
+        
+        # "What" questions that are data queries (not informational)
+        if question_lower.startswith('what') and any(word in question_lower for word in ['sensor', 'cabin', 'measurement', 'data', 'status', 'alert']):
             return 'data_query'
         
         return 'unknown'

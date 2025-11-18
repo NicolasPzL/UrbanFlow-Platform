@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 import json
 import os
+import re
 
 from .query_builder import QueryBuilder
 from .context_manager import ConversationContext
@@ -60,10 +61,10 @@ class ChatbotService:
                     "Este servicio solo admite Ollama. Ajusta LLM_PROVIDER=ollama en tu configuración."
                 )
 
-            from langchain_community.llms import Ollama
+            from langchain_community.chat_models import ChatOllama
             base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             print(f"Connecting to Ollama at: {base_url}")
-            self.llm_client = Ollama(
+            self.llm_client = ChatOllama(
                 model=self.model_name,
                 base_url=base_url,
                 temperature=0.1
@@ -102,7 +103,9 @@ class ChatbotService:
             query_type = query_context["query_type"]
             
             # Route to appropriate handler
-            if query_type == "prediction":
+            if query_type == "informational":
+                return self._handle_informational_query(question, query_context, context)
+            elif query_type == "prediction":
                 return self._handle_prediction_query(question, query_context, context)
             elif query_type == "analysis":
                 return self._handle_analysis_query(question, query_context, context)
@@ -117,6 +120,61 @@ class ChatbotService:
                 "response": f"I encountered an error processing your question: {str(e)}",
                 "error": str(e),
                 "query_type": "error"
+            }
+    
+    def _handle_informational_query(
+        self,
+        question: str,
+        query_context: Dict[str, Any],
+        context: Optional[ConversationContext]
+    ) -> Dict[str, Any]:
+        """Handle informational questions about the system that don't require SQL"""
+        
+        if not self.llm_client:
+            # Fallback response without LLM
+            return {
+                "success": True,
+                "response": """UrbanFlow Platform es un sistema integral de monitoreo y análisis de teleféricos. Proporciona:
+
+• Monitoreo en tiempo real de cabinas y sensores del teleférico
+• Análisis de vibraciones y detección de anomalías
+• Insights de mantenimiento predictivo usando machine learning
+• Análisis de datos históricos y generación de reportes
+• Monitoreo de salud del sistema y alertas
+
+Puedo ayudarte a consultar datos, analizar tendencias, generar reportes y responder preguntas sobre la operación del sistema.""",
+                "query_type": "informational"
+            }
+        
+        try:
+            informational_prompt = f"""Eres un asistente para UrbanFlow Platform, un sistema de monitoreo y análisis de teleféricos.
+
+El usuario preguntó: "{question}"
+
+Proporciona una respuesta clara e informativa sobre qué hace UrbanFlow Platform y sus capacidades.
+NO generes consultas SQL para preguntas informativas. Enfócate en explicar:
+- Qué es el sistema y qué hace
+- Características y capacidades clave
+- Cómo ayuda a monitorear las operaciones del teleférico
+- Qué tipo de datos e insights proporciona
+
+Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en español."""
+
+            from langchain_core.messages import HumanMessage
+            
+            response = self.llm_client.invoke([HumanMessage(content=informational_prompt)])
+            return {
+                "success": True,
+                "response": response.content.strip(),
+                "query_type": "informational"
+            }
+        
+        except Exception as e:
+            print(f"Error handling informational query: {e}")
+            return {
+                "success": True,
+                "response": """UrbanFlow Platform es un sistema integral de monitoreo y análisis de teleféricos que proporciona monitoreo en tiempo real, análisis de vibraciones, insights de mantenimiento predictivo y análisis de datos históricos para las operaciones del teleférico.""",
+                "query_type": "informational"
             }
     
     def _handle_data_query(
@@ -141,9 +199,17 @@ class ChatbotService:
         results = self.query_builder.execute_query(sql_query)
         
         if not results["success"]:
+            error_msg = results['error']
+            # Mejorar mensajes de error comunes
+            if "does not exist" in error_msg or "UndefinedColumn" in error_msg:
+                if "estado_actual" in error_msg and "cabina_estado_hist" in error_msg:
+                    error_msg = "The table 'cabina_estado_hist' uses the column 'estado', not 'estado_actual'. Please use ce.estado instead of ce.estado_actual."
+                else:
+                    error_msg = f"SQL error: {error_msg}. Please check that all column names and table aliases are correct."
+            
             return {
                 "success": False,
-                "response": f"I encountered an error executing the query: {results['error']}",
+                "response": f"I encountered an error executing the query: {error_msg}. Could you please rephrase your question?",
                 "query_type": "data_query",
                 "sql_query": sql_query,
                 "error": results["error"]
@@ -288,18 +354,18 @@ class ChatbotService:
 
 {EXAMPLE_QUERIES}
 
-User Question: {question}
+Pregunta del Usuario: {question}
 
-Generate ONLY the SQL query (no explanations). The query should:
-1. Use proper PostgreSQL syntax
-2. Include appropriate JOINs if multiple tables are needed
-3. Filter by time if relevant (use INTERVAL for time-based filters)
-4. Limit results appropriately
-5. Be safe to execute (SELECT only)
+Genera SOLO la consulta SQL (sin explicaciones). La consulta debe:
+1. Usar sintaxis PostgreSQL correcta
+2. Incluir JOINs apropiados si se necesitan múltiples tablas
+3. Filtrar por tiempo si es relevante (usar INTERVAL para filtros basados en tiempo)
+4. Limitar resultados apropiadamente
+5. Ser segura de ejecutar (solo SELECT)
 
-SQL Query:"""
+Consulta SQL:"""
             
-            from langchain.schema import HumanMessage, SystemMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
             
             messages = [
                 SystemMessage(content=SQL_AGENT_PROMPT),
@@ -309,13 +375,43 @@ SQL Query:"""
             response = self.llm_client.invoke(messages)
             sql_query = response.content.strip()
             
-            # Clean up response (remove markdown, etc.)
+            # Clean up response (remove markdown, explanations, etc.)
+            # Remove markdown code blocks
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+            
+            # Extract SQL query if there's explanatory text before/after
+            # Look for SELECT statement (case insensitive)
+            select_match = re.search(r'SELECT\s+', sql_query, re.IGNORECASE)
+            if select_match:
+                # Extract from SELECT onwards
+                sql_query = sql_query[select_match.start():]
+                # Remove everything after the last semicolon or end of query
+                if ';' in sql_query:
+                    sql_query = sql_query[:sql_query.rindex(';') + 1]
+                else:
+                    # Remove any trailing text that's not SQL
+                    # Keep only up to the last valid SQL token
+                    lines = sql_query.split('\n')
+                    cleaned_lines = []
+                    for line in lines:
+                        line = line.strip()
+                        if line and not line.lower().startswith(('here', 'this', 'the', 'query', 'answer')):
+                            cleaned_lines.append(line)
+                    sql_query = ' '.join(cleaned_lines)
+            
+            sql_query = sql_query.strip()
             
             return sql_query
         
         except Exception as e:
             print(f"Error generating SQL query: {e}")
+            # Si hay un error de columna, intentar sugerir una corrección
+            error_str = str(e)
+            if "does not exist" in error_str or "UndefinedColumn" in error_str:
+                print(f"SQL Error detected: {error_str}")
+                # Intentar extraer la columna problemática y sugerir corrección
+                if "estado_actual" in error_str and "cabina_estado_hist" in error_str:
+                    print("Hint: cabina_estado_hist uses 'estado' column, not 'estado_actual'")
             return None
     
     def _format_data_response(self, question: str, results: Dict[str, Any]) -> str:
@@ -328,16 +424,17 @@ SQL Query:"""
         try:
             results_text = self.query_builder.format_results_as_text(results)
             
-            prompt = f"""Based on the following data query results, provide a clear, natural language answer to the user's question.
+            prompt = f"""Basándote en los siguientes resultados de la consulta, proporciona una respuesta clara en lenguaje natural a la pregunta del usuario.
 
-User Question: {question}
+Pregunta del Usuario: {question}
 
-Query Results:
+Resultados de la Consulta:
 {results_text}
 
-Provide a concise, informative response that directly answers the question. Include key numbers and insights."""
+Proporciona una respuesta concisa e informativa que responda directamente la pregunta. Incluye números clave e insights.
+Responde SIEMPRE en español."""
             
-            from langchain.schema import HumanMessage, SystemMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
             
             messages = [
                 SystemMessage(content=ANALYSIS_PROMPT),
@@ -364,20 +461,22 @@ Provide a concise, informative response that directly answers the question. Incl
             return f"Health data for sensor {sensor_id}: {json.dumps(health_data, indent=2)}"
         
         try:
-            prompt = f"""Based on the following sensor health data, provide a clear answer to the user's question.
+            prompt = f"""Basándote en los siguientes datos de salud del sensor, proporciona una respuesta clara a la pregunta del usuario.
 
-User Question: {question}
-Sensor ID: {sensor_id if sensor_id else 'N/A'}
+Pregunta del Usuario: {question}
+ID del Sensor: {sensor_id if sensor_id else 'N/A'}
 
-Health Data:
+Datos de Salud:
 {json.dumps(health_data, indent=2)}
 
-Provide insights about:
-1. Current operational status
-2. Any concerning trends
-3. Maintenance recommendations if applicable"""
+Proporciona insights sobre:
+1. Estado operativo actual
+2. Tendencias preocupantes
+3. Recomendaciones de mantenimiento si aplica
+
+Responde SIEMPRE en español."""
             
-            from langchain.schema import HumanMessage, SystemMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
             
             messages = [
                 SystemMessage(content=ANALYSIS_PROMPT),
@@ -397,20 +496,22 @@ Provide insights about:
             return f"System summary: {json.dumps(summary, indent=2)}"
         
         try:
-            prompt = f"""Based on the following system summary, provide a comprehensive health assessment.
+            prompt = f"""Basándote en el siguiente resumen del sistema, proporciona una evaluación completa de salud.
 
-User Question: {question}
+Pregunta del Usuario: {question}
 
-System Data:
+Datos del Sistema:
 {json.dumps(summary, indent=2)}
 
-Provide:
-1. Overall system status
-2. Key metrics and their significance
-3. Any areas of concern
-4. Recommendations if applicable"""
+Proporciona:
+1. Estado general del sistema
+2. Métricas clave y su significado
+3. Áreas de preocupación
+4. Recomendaciones si aplica
+
+Responde SIEMPRE en español."""
             
-            from langchain.schema import HumanMessage, SystemMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
             
             messages = [
                 SystemMessage(content=ANALYSIS_PROMPT),
@@ -434,18 +535,20 @@ Provide:
             
             prompt = f"""{ANALYSIS_PROMPT}
 
-User Question: {question}
+Pregunta del Usuario: {question}
 
-Data to Analyze:
+Datos a Analizar:
 {results_text}
 
-Provide:
-1. Key insights and patterns
-2. Trends or anomalies
-3. Potential implications
-4. Actionable recommendations"""
+Proporciona:
+1. Insights y patrones clave
+2. Tendencias o anomalías
+3. Implicaciones potenciales
+4. Recomendaciones accionables
+
+Responde SIEMPRE en español."""
             
-            from langchain.schema import HumanMessage
+            from langchain_core.messages import HumanMessage
             
             response = self.llm_client.invoke([HumanMessage(content=prompt)])
             return response.content.strip()
@@ -456,7 +559,7 @@ Provide:
     def _generate_analysis_from_summary(self, question: str, summary: Dict[str, Any]) -> str:
         """Generate analysis from summary data"""
         
-        return f"Based on the current system summary:\n\n{json.dumps(summary, indent=2)}"
+        return f"Basado en el resumen actual del sistema:\n\n{json.dumps(summary, indent=2)}"
     
     def _generate_report(
         self,
@@ -472,17 +575,17 @@ Provide:
         try:
             prompt = f"""{REPORT_PROMPT}
 
-User Request: {question}
+Solicitud del Usuario: {question}
 
-System Summary:
+Resumen del Sistema:
 {json.dumps(summary, indent=2)}
 
-System Health:
+Salud del Sistema:
 {json.dumps(health_data, indent=2)}
 
-Generate a comprehensive report addressing the user's request."""
+Genera un reporte completo que aborde la solicitud del usuario."""
             
-            from langchain.schema import HumanMessage
+            from langchain_core.messages import HumanMessage
             
             response = self.llm_client.invoke([HumanMessage(content=prompt)])
             return response.content.strip()

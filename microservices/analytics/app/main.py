@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from .api.routes import api_router
+from .api.routes import api_router, chatbot_router
 from .core.config import settings
 from .db.session import SessionLocal
 from .services.chatbot import ChatbotService
@@ -178,6 +178,8 @@ async def general_exception_handler(request, exc):
     )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+# Incluir router del chatbot con prefijo /api/chatbot
+app.include_router(chatbot_router, prefix="/api/chatbot")
 
 @app.on_event("startup")
 async def on_startup():

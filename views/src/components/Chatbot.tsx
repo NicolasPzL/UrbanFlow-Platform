@@ -47,7 +47,8 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const ANALYTICS_API = 'http://localhost:8000/api';
+  // Usar rutas relativas para que pasen por el proxy del backend Node
+  const ANALYTICS_API = '/api';
 
   useEffect(() => {
     // Create a new session when component mounts
@@ -58,7 +59,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     // Add welcome message
     setMessages([{
       role: 'assistant',
-      content: 'Hello! I\'m your UrbanFlow AI assistant powered by Ollama (Llama 3). I can help you with:\n\n• Querying real-time and historical sensor data\n• Analyzing system health and performance\n• Identifying trends and anomalies\n• Generating reports\n• Predictive maintenance insights\n\nWhat would you like to know?',
+      content: '¡Hola! Soy tu asistente de IA de UrbanFlow, potenciado por Ollama (Llama 3). Puedo ayudarte con:\n\n• Consultar datos de sensores en tiempo real e históricos\n• Analizar la salud y el rendimiento del sistema\n• Identificar tendencias y anomalías\n• Generar reportes\n• Insights de mantenimiento predictivo\n\n¿En qué puedo ayudarte?',
       timestamp: new Date()
     }]);
   }, []);
@@ -74,7 +75,8 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     try {
       const response = await fetch(`${ANALYTICS_API}/chatbot/session/new`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
       });
       const result = await response.json();
       if (result.ok) {
@@ -87,7 +89,9 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
 
   const fetchCapabilities = async () => {
     try {
-      const response = await fetch(`${ANALYTICS_API}/chatbot/capabilities`);
+      const response = await fetch(`${ANALYTICS_API}/chatbot/capabilities`, {
+        credentials: 'include'
+      });
       const result = await response.json();
       if (result.ok) {
         setCapabilities(result.data);
@@ -122,6 +126,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify(body)
       });
 
@@ -141,17 +146,17 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
         };
         setMessages(prev => [...prev, assistantMessage]);
       } else {
-        const errorMessage: Message = {
-          role: 'assistant',
-          content: `Sorry, I encountered an error: ${result.data?.error || result.error || 'Unknown error'}`,
-          timestamp: new Date()
-        };
+      const errorMessage: Message = {
+        role: 'assistant',
+        content: `Lo siento, encontré un error: ${result.data?.error || result.error || 'Error desconocido'}`,
+        timestamp: new Date()
+      };
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
       const errorMessage: Message = {
         role: 'assistant',
-        content: `Sorry, I couldn't process your request. Please make sure the analytics service and the Ollama model server are running. Error: ${error}`,
+        content: `Lo siento, no pude procesar tu solicitud. Por favor asegúrate de que el servicio de analytics y el servidor de Ollama estén ejecutándose. Error: ${error}`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -170,7 +175,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
   const resetConversation = () => {
     setMessages([{
       role: 'assistant',
-      content: 'Conversation reset. How can I help you today?',
+      content: 'Conversación reiniciada. ¿Cómo puedo ayudarte hoy?',
       timestamp: new Date()
     }]);
     createNewSession();
@@ -183,15 +188,15 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
       const columns = Object.keys(data[0]);
       
       return (
-        <div className="space-y-3">
-          <div className="prose prose-sm dark:prose-invert max-w-none">
-            <p className="whitespace-pre-wrap">{message.content}</p>
+        <div className="space-y-3 max-w-full overflow-hidden">
+          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
           </div>
           
-          <div className="rounded-lg border bg-slate-50 dark:bg-slate-900 p-3 mt-3">
+          <div className="rounded-lg border bg-slate-50 dark:bg-slate-900 p-3 mt-3 max-w-full overflow-hidden">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                {message.metadata.row_count} rows
+                {message.metadata.row_count} filas
               </span>
               {message.metadata.query_type && (
                 <Badge variant="outline" className="text-xs">
@@ -200,37 +205,39 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               )}
             </div>
             
-            <ScrollArea className="h-[200px] w-full">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {columns.map(col => (
-                      <TableHead key={col} className="text-xs font-semibold">
-                        {col}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.slice(0, 10).map((row, idx) => (
-                    <TableRow key={idx}>
+            <ScrollArea className="h-[200px] w-full max-w-full">
+              <div className="overflow-x-auto">
+                <Table className="min-w-full">
+                  <TableHeader>
+                    <TableRow>
                       {columns.map(col => (
-                        <TableCell key={col} className="text-xs">
-                          {typeof row[col] === 'object' 
-                            ? JSON.stringify(row[col])
-                            : String(row[col] ?? '')}
-                        </TableCell>
+                        <TableHead key={col} className="text-xs font-semibold whitespace-nowrap">
+                          {col}
+                        </TableHead>
                       ))}
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {data.slice(0, 10).map((row, idx) => (
+                      <TableRow key={idx}>
+                        {columns.map(col => (
+                          <TableCell key={col} className="text-xs whitespace-nowrap max-w-[150px] truncate">
+                            {typeof row[col] === 'object' 
+                              ? JSON.stringify(row[col])
+                              : String(row[col] ?? '')}
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </ScrollArea>
             
             {message.metadata.sql_query && (
               <details className="mt-2">
                 <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-700 dark:hover:text-slate-300">
-                  View SQL Query
+                  Ver Consulta SQL
                 </summary>
                 <pre className="text-xs bg-slate-100 dark:bg-slate-950 p-2 rounded mt-2 overflow-x-auto">
                   <code>{message.metadata.sql_query}</code>
@@ -243,17 +250,17 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     }
 
     return (
-      <div className="prose prose-sm dark:prose-invert max-w-none">
-        <p className="whitespace-pre-wrap">{message.content}</p>
+      <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
+        <p className="whitespace-pre-wrap break-words">{message.content}</p>
       </div>
     );
   };
 
   const suggestedQuestions = [
-    "How many cabins are currently in alert status?",
-    "Show me recent measurements from sensor 1",
-    "What's the average RMS value today?",
-    "Generate a system health report"
+    "¿Cuántas cabinas están en estado de alerta?",
+    "Muéstrame las mediciones recientes del sensor 1",
+    "¿Cuál es el valor promedio de RMS hoy?",
+    "Genera un reporte de salud del sistema"
   ];
 
   const handleSuggestedQuestion = (question: string) => {
@@ -276,7 +283,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
   }
 
   return (
-    <Card className={`fixed bottom-4 right-4 w-[450px] h-[600px] shadow-2xl z-50 flex flex-col ${className}`}>
+    <Card className={`fixed bottom-4 right-4 w-[400px] h-[600px] shadow-2xl z-50 flex flex-col overflow-hidden ${className}`}>
       <CardHeader className="pb-3 flex-shrink-0 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -284,11 +291,11 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               <Sparkles className="h-4 w-4 text-white" />
             </div>
             <div>
-              <CardTitle className="text-base">UrbanFlow AI Assistant</CardTitle>
+              <CardTitle className="text-base">Asistente IA UrbanFlow</CardTitle>
               <p className="text-xs text-slate-500">
                 {capabilities
                   ? `${(capabilities.llm_provider || 'ollama').toUpperCase()} · ${capabilities.model_name}`
-                  : 'Loading LLM info...'}
+                  : 'Cargando información del LLM...'}
               </p>
             </div>
           </div>
@@ -298,7 +305,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               size="icon"
               onClick={resetConversation}
               className="h-8 w-8"
-              title="Reset conversation"
+              title="Reiniciar conversación"
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -307,7 +314,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               size="icon"
               onClick={() => setIsMinimized(true)}
               className="h-8 w-8"
-              title="Minimize"
+              title="Minimizar"
             >
               <Minimize2 className="h-4 w-4" />
             </Button>
@@ -317,7 +324,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
                 size="icon"
                 onClick={onClose}
                 className="h-8 w-8"
-                title="Close"
+                title="Cerrar"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -340,9 +347,9 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
                   </div>
                 )}
                 
-                <div className={`flex-1 ${message.role === 'user' ? 'max-w-[80%]' : 'max-w-[90%]'}`}>
+                <div className={`flex-1 min-w-0 ${message.role === 'user' ? 'max-w-[80%]' : 'max-w-[90%]'}`}>
                   <div
-                    className={`rounded-lg p-3 ${
+                    className={`rounded-lg p-3 overflow-hidden ${
                       message.role === 'user'
                         ? 'bg-blue-500 text-white ml-auto'
                         : 'bg-slate-100 dark:bg-slate-800'
@@ -378,7 +385,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
           {messages.length === 1 && (
             <div className="mt-6 space-y-2">
               <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                Try asking:
+                Prueba preguntando:
               </p>
               {suggestedQuestions.map((question, idx) => (
                 <button
@@ -402,7 +409,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Ask about your system..."
+              placeholder="Pregunta sobre tu sistema..."
               disabled={loading}
               className="flex-1"
             />
@@ -419,7 +426,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
             </Button>
           </div>
           <p className="text-xs text-slate-400 mt-2 text-center">
-            AI responses may not always be accurate
+            Las respuestas de IA pueden no ser siempre precisas
           </p>
         </div>
       </CardContent>

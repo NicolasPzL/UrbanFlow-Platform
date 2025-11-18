@@ -18,7 +18,7 @@ def get_table_descriptions() -> Dict[str, str]:
         "cabinas": "Cable car units with internal code and current operational state (operativo/inusual/alerta)",
         "predicciones": "Machine learning prediction results for measurements, including predicted class and probability distributions",
         "modelos_ml": "Registry of ML models used for predictions, including version, framework, and training date",
-        "cabina_estado_hist": "Historical log of cable car state changes over time",
+        "cabina_estado_hist": "Historical log of cable car state changes over time. Columns: hist_id, cabina_id, estado (NOT estado_actual), timestamp_inicio, timestamp_fin",
         "lineas": "Cable car lines/routes with names and total length",
         "estaciones": "Stations along cable car lines with geographic coordinates",
         "tramos": "Track segments between stations with length and slope percentage"

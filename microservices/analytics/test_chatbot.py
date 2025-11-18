@@ -9,7 +9,7 @@ import time
 from typing import Dict, Any
 
 # Configuration
-API_BASE = "http://localhost:8000/api"
+API_BASE = "http://localhost:8001/api"
 ANALYTICS_RUNNING = True
 
 def print_section(title: str):
@@ -35,10 +35,10 @@ def test_service_health():
         return print_result("Analytics Service", result)
     except requests.exceptions.ConnectionError:
         print("✗ FAIL - Analytics Service")
-        print("  Error: Could not connect to http://localhost:8000")
+        print("  Error: Could not connect to http://localhost:8001")
         print("  Make sure the analytics service is running:")
         print("    cd microservices/analytics")
-        print("    uvicorn app.main:app --reload --port 8000")
+        print("    uvicorn app.main:app --reload --host 0.0.0.0 --port 8001")
         return False
     except Exception as e:
         print("✗ FAIL - Analytics Service")

@@ -57,12 +57,12 @@ curl http://localhost:11434/api/version
 
 ```bash
 cd microservices/analytics
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 Verify the service is running:
 ```bash
-curl http://localhost:8000/api/chatbot/capabilities
+curl http://localhost:8001/api/chatbot/capabilities
 ```
 
 Expected response:
@@ -126,10 +126,10 @@ pip install langchain langchain-community
 ### Issue: Chatbot shows "Service not available"
 
 **Solution**: 
-1. Check analytics service is running on port 8000
+1. Check analytics service is running on port 8001
 2. Verify database connection
 3. Check browser console for CORS errors
-4. Try accessing http://localhost:8000/api/chatbot/capabilities directly
+4. Try accessing http://localhost:8001/api/chatbot/capabilities directly
 
 ### Issue: Slow responses
 
@@ -143,7 +143,7 @@ pip install langchain langchain-community
 - [ ] Python dependencies installed
 - [ ] Environment variables configured
 - [ ] LLM provider configurado (Ollama por defecto)
-- [ ] Analytics service running (port 8000)
+- [ ] Analytics service running (port 8001)
 - [ ] Database connected
 - [ ] Frontend running
 - [ ] Chatbot visible in Dashboard

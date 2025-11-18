@@ -16,6 +16,9 @@ import uuid
 
 api_router = APIRouter()
 
+# Router separado para el chatbot
+chatbot_router = APIRouter()
+
 # Pydantic models for chatbot endpoints
 class ChatbotQueryRequest(BaseModel):
     question: str
@@ -30,7 +33,7 @@ class ChatbotConversationRequest(BaseModel):
 # CHATBOT ENDPOINTS
 # =============================================================================
 
-@api_router.post("/chatbot/query")
+@chatbot_router.post("/query")
 def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
     """
     Main chatbot endpoint for natural language queries.
@@ -79,7 +82,7 @@ def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@api_router.post("/chatbot/conversation")
+@chatbot_router.post("/conversation")
 def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depends(get_db)):
     """
     Chatbot endpoint that maintains full conversation context.
@@ -132,7 +135,7 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@api_router.get("/chatbot/capabilities")
+@chatbot_router.get("/capabilities")
 def chatbot_capabilities(db: Session = Depends(get_db)):
     print("DEBUG provider:", settings.LLM_PROVIDER, "model:", settings.MODEL_NAME)
     """
@@ -161,7 +164,7 @@ def chatbot_capabilities(db: Session = Depends(get_db)):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@api_router.post("/chatbot/session/new")
+@chatbot_router.post("/session/new")
 def create_chatbot_session():
     """
     Create a new chatbot session and return a session_id.
@@ -186,7 +189,7 @@ def create_chatbot_session():
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@api_router.delete("/chatbot/session/{session_id}")
+@chatbot_router.delete("/session/{session_id}")
 def delete_chatbot_session(session_id: str):
     """
     Delete a chatbot session and clear its context.
@@ -203,7 +206,7 @@ def delete_chatbot_session(session_id: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-@api_router.get("/chatbot/session/{session_id}")
+@chatbot_router.get("/session/{session_id}")
 def get_chatbot_session(session_id: str):
     """
     Get conversation history for a specific session.

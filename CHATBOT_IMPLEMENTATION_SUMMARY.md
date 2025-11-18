@@ -259,7 +259,7 @@ MODEL_NAME=llama3
 ### 4. Ejecuta el servicio de analytics
 ```bash
 cd microservices/analytics
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
 ### 5. (Opcional) Ejecuta las pruebas

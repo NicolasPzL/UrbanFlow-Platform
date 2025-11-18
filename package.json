@@ -11,8 +11,8 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:analytics": "cd microservices/analytics && venv\\Scripts\\python -m uvicorn app.main:app --reload --port 8000",
-    "dev:frontend": "cd views && npm run dev",
+    "dev:analytics": "cd microservices/analytics && venv\\Scripts\\python -m uvicorn app.main:app --reload --port 8001",
+
     "start:all": "concurrently \"npm run dev\" \"npm run dev:analytics\" \"npm run dev:frontend\""
   },
   "repository": {

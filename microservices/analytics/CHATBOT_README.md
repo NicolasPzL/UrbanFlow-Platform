@@ -114,7 +114,7 @@ MODEL_NAME=llama3
 
 ```bash
 cd microservices/analytics
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 ### 5. Frontend Integration
@@ -241,7 +241,7 @@ This approach:
 
 ### Frontend Not Connecting
 
-1. Verify analytics service is running on port 8000
+1. Verify analytics service is running on port 8001
 2. Check CORS configuration
 3. Inspect browser console for errors
 4. Verify API proxy settings in frontend

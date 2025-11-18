@@ -120,22 +120,22 @@ pip install langchain-community>=0.0.20
 ### 1. Backend Service
 ```bash
 cd microservices/analytics
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 - [ ] Service starts without errors (muestra en consola `LLM provider: ollama`)
 - [ ] No import errors
-- [ ] Port 8000 accessible
+- [ ] Port 8001 accessible
 
 ### 2. Database Connection
 ```bash
-curl http://localhost:8000/api/analytics/summary
+curl http://localhost:8001/api/analytics/summary
 ```
 - [ ] Returns JSON response
 - [ ] No database connection errors
 
 ### 3. Chatbot Capabilities
 ```bash
-curl http://localhost:8000/api/chatbot/capabilities
+curl http://localhost:8001/api/chatbot/capabilities
 ```
 - [ ] Returns chatbot info
 - [ ] Shows `llm_provider="ollama"`
