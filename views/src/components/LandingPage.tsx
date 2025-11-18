@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { ArrowRight, Zap, Shield, Leaf, MapPin, Users, Clock } from "lucide-react";
@@ -9,6 +10,8 @@ interface LandingPageProps {
 }
 
 export function LandingPage({ onViewChange }: LandingPageProps) {
+  const [stationCount, setStationCount] = useState<number | null>(null);
+
   const benefits = [
     {
       icon: Zap,
@@ -44,6 +47,29 @@ export function LandingPage({ onViewChange }: LandingPageProps) {
       description: "Disfruta de un transporte seguro, rápido y sostenible"
     }
   ];
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch('/api/map/public');
+        if (!response.ok) throw new Error(`Error ${response.status}`);
+        const json = await response.json();
+        const count = Array.isArray(json?.data?.stations) ? json.data.stations.length : null;
+        if (!cancelled) {
+          setStationCount(count);
+        }
+      } catch (_err) {
+        if (!cancelled) {
+          setStationCount(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-white">
@@ -86,7 +112,9 @@ export function LandingPage({ onViewChange }: LandingPageProps) {
               <div className="flex items-center space-x-8 text-sm text-gray-600">
                 <div className="flex items-center space-x-2">
                   <MapPin className="h-4 w-4 text-blue-600" />
-                  <span>5 Estaciones Activas</span>
+                  <span>
+                    {stationCount !== null ? `${stationCount} Estación${stationCount === 1 ? '' : 'es'} Activa${stationCount === 1 ? '' : 's'}` : 'Estaciones en consulta'}
+                  </span>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Users className="h-4 w-4 text-blue-600" />
@@ -173,13 +201,6 @@ export function LandingPage({ onViewChange }: LandingPageProps) {
                   <p className="text-gray-600 leading-relaxed">{step.description}</p>
                 </div>
                 
-                {index < howItWorks.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-1/2 w-full h-0.5 bg-gray-200">
-                    <div className="absolute right-0 top-1/2 transform -translate-y-1/2">
-                      <ArrowRight className="h-4 w-4 text-gray-400" />
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
           </div>
