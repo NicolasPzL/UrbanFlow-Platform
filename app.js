@@ -204,6 +204,17 @@ async function proxyToAnalytics(req, res, upstreamPath) {
     return res.send(text);
   } catch (e) {
     console.error('Proxy analytics error:', e);
+    // Si es una ruta del chatbot, devolver mensaje genérico amigable
+    if (upstreamPath.includes('/chatbot')) {
+      return res.status(502).json({ 
+        ok: true, 
+        data: {
+          success: false,
+          response: "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+          query_type: "error"
+        }
+      });
+    }
     return res.status(502).json({ ok: false, error: 'UPSTREAM_ERROR', detail: e?.message || 'proxy error' });
   }
 }

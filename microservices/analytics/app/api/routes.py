@@ -80,7 +80,16 @@ def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
         return {"ok": True, "data": result}
     
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @chatbot_router.post("/conversation")
 def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depends(get_db)):
@@ -133,7 +142,16 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
         return {"ok": True, "data": result}
     
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @chatbot_router.get("/capabilities")
 def chatbot_capabilities(db: Session = Depends(get_db)):
@@ -162,7 +180,16 @@ def chatbot_capabilities(db: Session = Depends(get_db)):
         return {"ok": True, "data": capabilities}
     
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @chatbot_router.post("/session/new")
 def create_chatbot_session():
@@ -187,7 +214,16 @@ def create_chatbot_session():
         }
     
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @chatbot_router.delete("/session/{session_id}")
 def delete_chatbot_session(session_id: str):
@@ -201,10 +237,27 @@ def delete_chatbot_session(session_id: str):
         if deleted:
             return {"ok": True, "data": {"message": "Session deleted successfully"}}
         else:
-            return {"ok": False, "error": "Session not found"}
+            print("Session not found for deletion")
+            return {
+                "ok": True,
+                "data": {
+                    "success": False,
+                    "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                    "query_type": "error"
+                }
+            }
     
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @chatbot_router.get("/session/{session_id}")
 def get_chatbot_session(session_id: str):
@@ -216,12 +269,29 @@ def get_chatbot_session(session_id: str):
         context = context_manager.get_context(session_id)
         
         if not context:
-            return {"ok": False, "error": "Session not found"}
+            print(f"Session not found: {session_id}")
+            return {
+                "ok": True,
+                "data": {
+                    "success": False,
+                    "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                    "query_type": "error"
+                }
+            }
         
         return {"ok": True, "data": context.to_dict()}
     
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 # =============================================================================
 # ENDPOINTS DE PROCESAMIENTO DE TELEMETRÍA
@@ -235,7 +305,16 @@ def process_telemetry_data(db: Session = Depends(get_db)):
         result = processor.process_new_telemetry()
         return {"ok": True, "data": result}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @api_router.get("/analytics/trayecto")
 def get_trayecto_completo(db: Session = Depends(get_db)):
@@ -309,7 +388,16 @@ def get_recent_measurements(limit: int = 500, db: Session = Depends(get_db)):
         return {"ok": True, "data": {"measurements": measurements}}
         
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 # =============================================================================
 # ENDPOINTS DE ANÁLISIS EXISTENTES
@@ -628,7 +716,16 @@ def get_sensors_status(db: Session = Depends(get_db)):
         return {"ok": True, "data": {"sensors": sensors}}
         
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @api_router.get("/debug/telemetry-count")
 def debug_telemetry_count(db: Session = Depends(get_db)):
@@ -670,4 +767,13 @@ def debug_telemetry_count(db: Session = Depends(get_db)):
         }
         
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }

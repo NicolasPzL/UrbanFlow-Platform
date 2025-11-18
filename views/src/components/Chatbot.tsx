@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { 
@@ -66,9 +65,13 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
 
   useEffect(() => {
     // Scroll to bottom when new messages arrive
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    const scrollToBottom = () => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      }
+    };
+    // Small delay to ensure DOM is updated
+    setTimeout(scrollToBottom, 100);
   }, [messages]);
 
   const createNewSession = async () => {
@@ -146,17 +149,20 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
         };
         setMessages(prev => [...prev, assistantMessage]);
       } else {
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: `Lo siento, encontré un error: ${result.data?.error || result.error || 'Error desconocido'}`,
-        timestamp: new Date()
-      };
+        // Si hay error en la respuesta, usar el mensaje de error del servidor o mensaje genérico
+        const errorResponse = result.data?.response || result.data?.error || result.error;
+        const errorMessage: Message = {
+          role: 'assistant',
+          content: errorResponse || "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+          timestamp: new Date()
+        };
         setMessages(prev => [...prev, errorMessage]);
       }
     } catch (error) {
+      console.error('Error processing request:', error);  // Log para debugging
       const errorMessage: Message = {
         role: 'assistant',
-        content: `Lo siento, no pude procesar tu solicitud. Por favor asegúrate de que el servicio de analytics y el servidor de Ollama estén ejecutándose. Error: ${error}`,
+        content: "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
@@ -181,6 +187,121 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     createNewSession();
   };
 
+  const parseMarkdown = (text: string) => {
+    if (!text) return null;
+    
+    const lines = text.split('\n');
+    const elements: JSX.Element[] = [];
+    let currentParagraph: string[] = [];
+    let listItems: string[] = [];
+    let inList = false;
+    
+    const flushParagraph = () => {
+      if (currentParagraph.length > 0) {
+        const paragraphText = currentParagraph.join(' ').trim();
+        if (paragraphText) {
+          elements.push(
+            <p key={`p-${elements.length}`} className="mb-3 leading-relaxed">
+              {parseInlineMarkdown(paragraphText)}
+            </p>
+          );
+        }
+        currentParagraph = [];
+      }
+    };
+    
+    const flushList = () => {
+      if (listItems.length > 0) {
+        elements.push(
+          <ul key={`ul-${elements.length}`} className="list-disc list-inside mb-3 space-y-1 ml-4">
+            {listItems.map((item, idx) => (
+              <li key={idx} className="text-sm leading-relaxed">
+                {parseInlineMarkdown(item.trim())}
+              </li>
+            ))}
+          </ul>
+        );
+        listItems = [];
+        inList = false;
+      }
+    };
+    
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      
+      // Title detection (line with only bold text, no other content)
+      const boldOnlyMatch = trimmed.match(/^\*\*([^*]+)\*\*$/);
+      if (boldOnlyMatch && trimmed.length < 100) {
+        if (inList) {
+          flushList();
+        }
+        flushParagraph();
+        elements.push(
+          <h3 key={`h3-${elements.length}`} className="font-bold text-base mb-2 mt-4 text-slate-900 dark:text-slate-100 first:mt-0">
+            {boldOnlyMatch[1]}
+          </h3>
+        );
+        return;
+      }
+      
+      // List item detection (starts with * or -)
+      if (trimmed.match(/^[\*\-]\s+/)) {
+        if (!inList) {
+          flushParagraph();
+          inList = true;
+        }
+        listItems.push(trimmed.replace(/^[\*\-]\s+/, ''));
+      } else {
+        // Not a list item
+        if (inList) {
+          flushList();
+        }
+        
+        if (trimmed === '') {
+          // Empty line - flush current paragraph
+          flushParagraph();
+        } else {
+          currentParagraph.push(trimmed);
+        }
+      }
+    });
+    
+    flushParagraph();
+    flushList();
+    
+    return elements.length > 0 ? elements : [<p key="empty" className="mb-3">{parseInlineMarkdown(text)}</p>];
+  };
+  
+  const parseInlineMarkdown = (text: string): (string | JSX.Element)[] => {
+    const parts: (string | JSX.Element)[] = [];
+    let currentIndex = 0;
+    const boldRegex = /\*\*([^*]+)\*\*/g;
+    let match;
+    let lastIndex = 0;
+    
+    while ((match = boldRegex.exec(text)) !== null) {
+      // Add text before the match
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+      // Add bold text
+      parts.push(
+        <strong key={`bold-${currentIndex}`} className="font-semibold text-slate-900 dark:text-slate-100">
+          {match[1]}
+        </strong>
+      );
+      lastIndex = match.index + match[0].length;
+      currentIndex++;
+    }
+    
+    // Add remaining text
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+    
+    return parts.length > 0 ? parts : [text];
+  };
+
   const renderMessageContent = (message: Message) => {
     // If message has data table, render it
     if (message.metadata?.data && Array.isArray(message.metadata.data) && message.metadata.data.length > 0) {
@@ -189,8 +310,8 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
       
       return (
         <div className="space-y-3 max-w-full overflow-hidden">
-          <div className="prose prose-sm dark:prose-invert max-w-none break-words">
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          <div className="max-w-none break-words">
+            {parseMarkdown(message.content)}
           </div>
           
           <div className="rounded-lg border bg-slate-50 dark:bg-slate-900 p-3 mt-3 max-w-full overflow-hidden">
@@ -205,9 +326,9 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               )}
             </div>
             
-            <ScrollArea className="h-[200px] w-full max-w-full">
-              <div className="overflow-x-auto">
-                <Table className="min-w-full">
+            <div className="h-[200px] w-full max-w-full overflow-hidden">
+              <div className="overflow-x-auto overflow-y-auto h-full w-full">
+                <Table className="w-full">
                   <TableHeader>
                     <TableRow>
                       {columns.map(col => (
@@ -221,7 +342,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
                     {data.slice(0, 10).map((row, idx) => (
                       <TableRow key={idx}>
                         {columns.map(col => (
-                          <TableCell key={col} className="text-xs whitespace-nowrap max-w-[150px] truncate">
+                          <TableCell key={col} className="text-xs whitespace-nowrap max-w-[120px] truncate overflow-hidden">
                             {typeof row[col] === 'object' 
                               ? JSON.stringify(row[col])
                               : String(row[col] ?? '')}
@@ -232,7 +353,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
                   </TableBody>
                 </Table>
               </div>
-            </ScrollArea>
+            </div>
             
             {message.metadata.sql_query && (
               <details className="mt-2">
@@ -250,8 +371,8 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     }
 
     return (
-      <div className="prose prose-sm dark:prose-invert max-w-none break-words overflow-hidden">
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+      <div className="max-w-none break-words overflow-hidden text-sm">
+        {parseMarkdown(message.content)}
       </div>
     );
   };
@@ -270,20 +391,20 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
 
   if (isMinimized) {
     return (
-      <div className={`fixed bottom-4 right-4 z-50 ${className}`}>
+      <div className={`fixed bottom-4 right-4 z-[90] ${className}`}>
         <Button
           onClick={() => setIsMinimized(false)}
           size="lg"
-          className="rounded-full w-14 h-14 shadow-lg"
+          className="rounded-full w-14 h-14 shadow-2xl bg-blue-600 hover:bg-blue-700"
         >
-          <MessageCircle className="h-6 w-6" />
+          <MessageCircle className="h-6 w-6 text-white" />
         </Button>
       </div>
     );
   }
 
   return (
-    <Card className={`fixed bottom-4 right-4 w-[400px] h-[600px] shadow-2xl z-50 flex flex-col overflow-hidden ${className}`}>
+    <Card className={`fixed bottom-4 right-4 w-[400px] h-[600px] max-w-[400px] max-h-[600px] shadow-2xl z-[90] flex flex-col overflow-hidden ${className}`} style={{ width: '400px', height: '600px', zIndex: 90 }}>
       <CardHeader className="pb-3 flex-shrink-0 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -333,9 +454,35 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
         </div>
       </CardHeader>
 
-      <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-        <ScrollArea className="flex-1 px-4 py-3" ref={scrollRef}>
-          <div className="space-y-4">
+      <CardContent className="flex flex-col p-0 overflow-hidden" style={{ height: '527px' }}>
+        <style>{`
+          .chat-scrollbar::-webkit-scrollbar {
+            width: 8px !important;
+            display: block !important;
+          }
+          .chat-scrollbar::-webkit-scrollbar-track {
+            background: rgb(241 245 249);
+            border-radius: 4px;
+          }
+          .chat-scrollbar::-webkit-scrollbar-thumb {
+            background: rgb(148 163 184);
+            border-radius: 4px;
+          }
+          .chat-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgb(100 116 139);
+          }
+        `}</style>
+        <div 
+          className="w-full overflow-y-scroll overflow-x-hidden px-4 py-3 chat-scrollbar"
+          style={{ 
+            height: '100%', 
+            maxHeight: '527px',
+            scrollbarWidth: 'thin',
+            scrollbarColor: 'rgb(148 163 184) rgb(241 245 249)'
+          }}
+          ref={scrollRef}
+        >
+          <div className="space-y-4 max-w-full pr-4">
             {messages.map((message, index) => (
               <div
                 key={index}
@@ -380,25 +527,25 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
                 </div>
               </div>
             )}
-          </div>
 
-          {messages.length === 1 && (
-            <div className="mt-6 space-y-2">
-              <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                Prueba preguntando:
-              </p>
-              {suggestedQuestions.map((question, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSuggestedQuestion(question)}
-                  className="block w-full text-left text-xs p-2 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                >
-                  {question}
-                </button>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+            {messages.length === 1 && (
+              <div className="mt-6 space-y-2">
+                <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+                  Prueba preguntando:
+                </p>
+                {suggestedQuestions.map((question, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSuggestedQuestion(question)}
+                    className="block w-full text-left text-xs p-2 rounded border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
 
         <Separator />
 

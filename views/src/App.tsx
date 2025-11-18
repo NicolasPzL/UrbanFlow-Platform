@@ -8,6 +8,7 @@ import { Dashboard } from "./components/Dashboard";
 import { DetailedGeoportal } from "./components/DetailedGeoportal";
 import { UserManagement } from "./components/UserManagement";
 import { CitizenDashboard } from "./components/CitizenDashboard";
+import { Chatbot } from "./components/Chatbot";
 import { AuthState, AppView, User } from "./types";
 import { normalizeRolToEs } from "./lib/roles";
 import { Toaster } from "./components/ui/sonner";
@@ -19,6 +20,7 @@ export default function App() {
     user: null
   });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [showChatbot, setShowChatbot] = useState(false);
 
   // Normaliza la forma del usuario que viene del backend a nuestro tipo User
   const normalizeUser = (rawInput: any): User => {
@@ -145,6 +147,8 @@ export default function App() {
         authState={authState}
         onLoginClick={() => setIsLoginModalOpen(true)}
         onLogout={handleLogout}
+        showChatbot={showChatbot}
+        onToggleChatbot={() => setShowChatbot((prev) => !prev)}
       />
 
       <main className="flex-1">
@@ -156,6 +160,14 @@ export default function App() {
         onClose={() => setIsLoginModalOpen(false)}
         onLogin={handleLogin}
       />
+
+      {/* AI Chatbot - disponible en todas las vistas */}
+      {showChatbot && (
+        <Chatbot 
+          onClose={() => setShowChatbot(false)}
+          defaultMinimized={false}
+        />
+      )}
 
       <Toaster />
     </div>

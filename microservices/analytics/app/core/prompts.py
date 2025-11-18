@@ -31,6 +31,11 @@ Importante:
 3. Formatea las fechas correctamente (sintaxis PostgreSQL)
 4. Retorna nombres de columnas claros y legibles
 5. Usa agregaciones (AVG, COUNT, SUM) cuando sea apropiado para resúmenes
+6. CRÍTICO: 'clase_predicha' está SOLO en la tabla 'predicciones', NO en 'mediciones'
+   Si necesitas clase_predicha con datos de mediciones, debes hacer:
+   mediciones m JOIN predicciones p ON m.medicion_id = p.medicion_id
+7. La tabla 'mediciones' tiene 'estado_procesado', NO 'clase_predicha'
+   La tabla 'predicciones' tiene 'clase_predicha', relacionada vía medicion_id
 
 Genera consultas SQL que sean seguras, eficientes y respondan con precisión la pregunta del usuario.
 Responde SIEMPRE en español cuando expliques o formatees respuestas.
@@ -93,6 +98,7 @@ TABLES:
   * frecuencia_media, frecuencia_dominante, amplitud_max_espectral
   * energia_banda_1, energia_banda_2, energia_banda_3
   * estado_procesado (operativo/inusual/alerta)
+  * IMPORTANTE: Esta tabla NO tiene 'clase_predicha'. Si necesitas clase_predicha, debes hacer JOIN con la tabla 'predicciones'
 
 - sensores: Sensor registry
   * sensor_id (PK), cabina_id (unique)
@@ -102,7 +108,8 @@ TABLES:
 
 - predicciones: ML prediction results
   * prediccion_id (PK), medicion_id (FK), modelo_id (FK)
-  * clase_predicha, probabilidades (JSON), timestamp_prediccion
+  * clase_predicha (SOLO disponible aquí, NO en mediciones), probabilidades (JSON), timestamp_prediccion
+  * Para usar clase_predicha con mediciones, hacer: mediciones m JOIN predicciones p ON m.medicion_id = p.medicion_id
 
 - modelos_ml: ML model registry
   * modelo_id (PK), nombre, version, framework
@@ -184,6 +191,23 @@ SELECT
 FROM predicciones
 WHERE modelo_id = (SELECT modelo_id FROM modelos_ml ORDER BY fecha_entrenamiento DESC LIMIT 1)
 GROUP BY modelo_id, clase_predicha;
+
+Q: "Show average RMS by predicted class for each cabin"
+SQL:
+SELECT 
+    c.codigo_interno,
+    AVG(m.rms) as avg_rms,
+    COUNT(*) as total_predictions,
+    p.clase_predicha,
+    COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (PARTITION BY c.codigo_interno) as percentage
+FROM mediciones m
+JOIN predicciones p ON m.medicion_id = p.medicion_id
+JOIN sensores s ON m.sensor_id = s.sensor_id
+JOIN cabinas c ON s.cabina_id = c.cabina_id
+WHERE m.timestamp >= NOW() - INTERVAL '24 hours'
+GROUP BY c.codigo_interno, p.clase_predicha
+ORDER BY avg_rms DESC
+LIMIT 10;
 """
 
 

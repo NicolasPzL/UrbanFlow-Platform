@@ -52,8 +52,11 @@ def get_column_descriptions() -> Dict[str, Dict[str, str]]:
             "direccion": "Direction of travel"
         },
         "predicciones": {
-            "clase_predicha": "Predicted operational state from ML model",
+            "clase_predicha": "Predicted operational state from ML model - ONLY in predicciones table, NOT in mediciones. To use with mediciones, JOIN predicciones ON mediciones.medicion_id = predicciones.medicion_id",
             "probabilidades": "JSON object with probability distribution for each class"
+        },
+        "mediciones": {
+            "estado_procesado": "Processed state classification - this is in mediciones, NOT clase_predicha. clase_predicha is ONLY in predicciones table"
         }
     }
 

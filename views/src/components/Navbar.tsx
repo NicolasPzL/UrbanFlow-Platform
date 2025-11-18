@@ -1,6 +1,6 @@
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
-import { Menu, User, BarChart3, Map, Users } from "lucide-react";
+import { Menu, User, BarChart3, Map, Users, MessageCircle } from "lucide-react";
 import { AuthState, AppView } from "../types";
 import logoImage from 'figma:asset/856ee0847a1c73c8150b4a4b5a7067b12c34fca3.png';
 
@@ -10,9 +10,11 @@ interface NavbarProps {
   authState: AuthState;
   onLoginClick: () => void;
   onLogout: () => void;
+  showChatbot?: boolean;
+  onToggleChatbot?: () => void;
 }
 
-export function Navbar({ currentView, onViewChange, authState, onLoginClick, onLogout }: NavbarProps) {
+export function Navbar({ currentView, onViewChange, authState, onLoginClick, onLogout, showChatbot = false, onToggleChatbot }: NavbarProps) {
   const publicNavItems = [
     { id: 'landing' as AppView, label: 'Inicio', icon: Map },
     { id: 'geoportal-public' as AppView, label: 'Geoportal', icon: Map }
@@ -81,6 +83,17 @@ export function Navbar({ currentView, onViewChange, authState, onLoginClick, onL
                   <User className="h-4 w-4 text-gray-500" />
                   <span className="text-sm text-gray-700">{authState.user?.name}</span>
                 </div>
+                {onToggleChatbot && (
+                  <Button 
+                    variant={showChatbot ? "default" : "outline"} 
+                    size="sm" 
+                    onClick={onToggleChatbot}
+                    className="flex items-center gap-2"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    <span>{showChatbot ? "Ocultar IA" : "Asistente IA"}</span>
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={onLogout}>
                   Cerrar Sesión
                 </Button>
@@ -127,6 +140,17 @@ export function Navbar({ currentView, onViewChange, authState, onLoginClick, onL
                         <User className="h-4 w-4 text-gray-500" />
                         <span className="text-sm text-gray-700">{authState.user?.name}</span>
                       </div>
+                      {onToggleChatbot && (
+                        <Button 
+                          variant={showChatbot ? "default" : "outline"} 
+                          size="sm" 
+                          onClick={onToggleChatbot}
+                          className="w-full flex items-center justify-center gap-2"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          <span>{showChatbot ? "Ocultar IA" : "Asistente IA"}</span>
+                        </Button>
+                      )}
                       <Button variant="outline" size="sm" onClick={onLogout} className="w-full">
                         Cerrar Sesión
                       </Button>

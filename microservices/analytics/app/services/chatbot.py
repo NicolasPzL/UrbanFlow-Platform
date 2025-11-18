@@ -115,9 +115,10 @@ class ChatbotService:
                 return self._handle_data_query(question, query_context, context)
         
         except Exception as e:
+            print(f"Error processing query: {e}")  # Log para debugging
             return {
                 "success": False,
-                "response": f"I encountered an error processing your question: {str(e)}",
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
                 "error": str(e),
                 "query_type": "error"
             }
@@ -191,7 +192,7 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         if not sql_query:
             return {
                 "success": False,
-                "response": "I couldn't generate a valid SQL query for your question. Could you please rephrase it?",
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
                 "query_type": "data_query"
             }
         
@@ -200,16 +201,20 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         
         if not results["success"]:
             error_msg = results['error']
-            # Mejorar mensajes de error comunes
+            # Log el error para debugging pero no lo expongas al usuario
+            print(f"SQL execution error: {error_msg}")
+            print(f"Query that failed: {sql_query}")
+            
+            # Log específico para errores conocidos para mejor debugging
             if "does not exist" in error_msg or "UndefinedColumn" in error_msg:
                 if "estado_actual" in error_msg and "cabina_estado_hist" in error_msg:
-                    error_msg = "The table 'cabina_estado_hist' uses the column 'estado', not 'estado_actual'. Please use ce.estado instead of ce.estado_actual."
-                else:
-                    error_msg = f"SQL error: {error_msg}. Please check that all column names and table aliases are correct."
+                    print("Hint: cabina_estado_hist uses 'estado' column, not 'estado_actual'")
+                elif "clase_predicha" in error_msg and ("mediciones" in error_msg or "m." in error_msg):
+                    print("Hint: clase_predicha is only in predicciones table, not mediciones. Need JOIN with predicciones.")
             
             return {
                 "success": False,
-                "response": f"I encountered an error executing the query: {error_msg}. Could you please rephrase your question?",
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
                 "query_type": "data_query",
                 "sql_query": sql_query,
                 "error": results["error"]
@@ -239,7 +244,7 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         if not self.ml_service:
             return {
                 "success": False,
-                "response": "ML analysis is not currently enabled.",
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
                 "query_type": "prediction"
             }
         
