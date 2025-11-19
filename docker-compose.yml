@@ -6,9 +6,9 @@ services:
     image: postgres:15
     container_name: urbanflow-postgres
     environment:
-      POSTGRES_DB: urbanflow_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
@@ -23,16 +23,15 @@ services:
       context: .
       dockerfile: Dockerfile.backend
     container_name: urbanflow-backend
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - PORT=3000
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=urbanflow_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - JWT_SECRET=your_jwt_secret
-      - REFRESH_JWT_SECRET=your_refresh_secret
+      - DB_PORT=${DB_PORT:-5432}
+      - JWT_SECRET=${JWT_SECRET}
+      - REFRESH_JWT_SECRET=${REFRESH_JWT_SECRET}
     ports:
       - "3000:3000"
     depends_on:
@@ -62,8 +61,11 @@ services:
       context: ./microservices/analytics
       dockerfile: Dockerfile
     container_name: urbanflow-analytics
+    env_file:
+      - .env
     environment:
-      - ANALYTICS_DATABASE_URL=postgresql+psycopg2://postgres:postgres@postgres:5432/urbanflow_db
+      - DB_HOST=postgres
+      - DB_PORT=${DB_PORT:-5432}
     ports:
       - "8080:8080"
     depends_on:
@@ -77,12 +79,11 @@ services:
       context: ./microservices/predictions-service
       dockerfile: Dockerfile
     container_name: urbanflow-predictions
+    env_file:
+      - .env
     environment:
       - DB_HOST=postgres
-      - DB_PORT=5432
-      - DB_NAME=urbanflow_db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
+      - DB_PORT=${DB_PORT:-5432}
       - PORT=3001
     ports:
       - "3001:3001"

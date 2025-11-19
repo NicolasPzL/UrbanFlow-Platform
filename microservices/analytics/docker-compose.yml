@@ -5,16 +5,15 @@ services:
     build: .
     ports:
       - "8001:8001"
+    env_file:
+      - ../../.env
     environment:
       - DB_HOST=db
-      - DB_USER=postgres
-      - DB_PASSWORD=postgres
-      - DB_NAME=urbanflow_db
-      - DB_PORT=5432
-      - DEBUG=false
-      - LOG_LEVEL=INFO
-      - ML_CONTAMINATION=0.1
-      - ML_RANDOM_STATE=42
+      - DB_PORT=${DB_PORT:-5432}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ML_CONTAMINATION=${ML_CONTAMINATION:-0.1}
+      - ML_RANDOM_STATE=${ML_RANDOM_STATE:-42}
     depends_on:
       - db
     restart: unless-stopped
@@ -29,10 +28,12 @@ services:
 
   db:
     image: postgres:15-alpine
+    env_file:
+      - ../../.env
     environment:
-      - POSTGRES_DB=urbanflow_db
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
     ports:
       - "5432:5432"
     volumes:

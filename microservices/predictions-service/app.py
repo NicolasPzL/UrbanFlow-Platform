@@ -15,12 +15,29 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuración de base de datos - usar las mismas variables que el proyecto principal
+# Todas las credenciales deben venir del archivo .env por seguridad
+# Validar que las variables de entorno requeridas estén definidas
+DB_NAME = os.getenv('DB_NAME')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_HOST = os.getenv('DB_HOST')
+DB_PORT = os.getenv('DB_PORT', '5432')
+
+if not DB_NAME:
+    raise ValueError("DB_NAME debe estar definido en el archivo .env")
+if not DB_USER:
+    raise ValueError("DB_USER debe estar definido en el archivo .env")
+if not DB_PASSWORD:
+    raise ValueError("DB_PASSWORD debe estar definido en el archivo .env")
+if not DB_HOST:
+    raise ValueError("DB_HOST debe estar definido en el archivo .env")
+
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', '127.0.0.1'),
-    'port': os.getenv('DB_PORT', '5432'),
-    'database': os.getenv('DB_NAME', 'urbanflow_db'),
-    'user': os.getenv('DB_USER', 'postgres'),
-    'password': os.getenv('DB_PASSWORD', 'postgres')
+    'host': DB_HOST,
+    'port': DB_PORT,
+    'database': DB_NAME,
+    'user': DB_USER,
+    'password': DB_PASSWORD
 }
 
 def get_db_connection():
