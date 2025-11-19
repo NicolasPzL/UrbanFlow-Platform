@@ -28,12 +28,24 @@ except Exception as e:
     # Continuar sin archivo .env
 
 # Construcción de la URL de base de datos usando las mismas variables que db.js
+# Todas las credenciales deben venir del archivo .env por seguridad
 def _build_db_url() -> str:
-    user = os.getenv("DB_USER", "postgres")
-    password = os.getenv("DB_PASSWORD", "password")
-    host = os.getenv("DB_HOST", "localhost")
+    # Validar que las variables de entorno requeridas estén definidas
+    user = os.getenv("DB_USER")
+    password = os.getenv("DB_PASSWORD")
+    host = os.getenv("DB_HOST")
     port = os.getenv("DB_PORT", "5432")
-    name = os.getenv("DB_NAME", "urbanflow_db")  # Usar minúsculas para consistencia
+    name = os.getenv("DB_NAME")
+    
+    if not user:
+        raise ValueError("DB_USER debe estar definido en el archivo .env")
+    if not password:
+        raise ValueError("DB_PASSWORD debe estar definido en el archivo .env")
+    if not host:
+        raise ValueError("DB_HOST debe estar definido en el archivo .env")
+    if not name:
+        raise ValueError("DB_NAME debe estar definido en el archivo .env")
+    
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
 
 # Prioridad: ANALYTICS_DATABASE_URL > DATABASE_URL > construir desde DB_*
