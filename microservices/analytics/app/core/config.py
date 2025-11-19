@@ -33,7 +33,7 @@ def _build_db_url() -> str:
     password = os.getenv("DB_PASSWORD", "password")  # Usar 'password' como en db.js
     host = os.getenv("DB_HOST", "localhost")
     port = os.getenv("DB_PORT", "5432")
-    name = os.getenv("DB_NAME", "Urbanflow_db")  # Usar 'Urbanflow_db' como en db.js
+    name = os.getenv("DB_NAME", "urbanflow_db")  # Usar 'urbanflow_db' como en db.js
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
 
 _DATABASE_URL_DEFAULT = _build_db_url()
