@@ -72,5 +72,5 @@ venv/
 coverage/
 *.log
 *.tmp
-
+.cursor/
 node_modules

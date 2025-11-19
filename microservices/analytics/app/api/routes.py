@@ -1,15 +1,298 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, text
 from ..db.session import get_db
 from ..core.config import settings
 from ..db import models as m
 from ..services.analytics import AnalyticsService
 from ..services.ml import MLPredictionService
 from ..services.telemetry_processor_simple import TelemetryProcessorSimple as TelemetryProcessor
+from ..services.chatbot import ChatbotService
+from ..services.context_manager import get_context_manager
+from ..core.config import settings
 from datetime import datetime, timedelta
+from pydantic import BaseModel
+from typing import Optional
+import uuid
 
 api_router = APIRouter()
+
+# Router separado para el chatbot
+chatbot_router = APIRouter()
+
+# Pydantic models for chatbot endpoints
+class ChatbotQueryRequest(BaseModel):
+    question: str
+    session_id: Optional[str] = None
+    include_ml_analysis: Optional[bool] = False
+
+class ChatbotConversationRequest(BaseModel):
+    question: str
+    session_id: str
+
+# =============================================================================
+# CHATBOT ENDPOINTS
+# =============================================================================
+
+@chatbot_router.post("/query")
+def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
+    """
+    Main chatbot endpoint for natural language queries.
+    Can optionally maintain conversation context via session_id.
+    """
+    try:
+        # Initialize chatbot service
+        print(
+            "[DEBUG chatbot_query] provider=",
+            settings.LLM_PROVIDER,
+            "model=",
+            settings.MODEL_NAME,
+            "ollama_base_url=",
+            settings.OLLAMA_BASE_URL,
+        )
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+        )
+        
+        # Get or create conversation context
+        context = None
+        if request.session_id:
+            context_manager = get_context_manager()
+            context = context_manager.get_or_create_context(
+                request.session_id,
+                max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
+            )
+            context.add_user_message(request.question)
+        
+        # Process the query
+        result = chatbot.process_query(
+            question=request.question,
+            context=context,
+            include_ml_analysis=request.include_ml_analysis
+        )
+        
+        # Add response to context if session exists
+        if context and result.get("success"):
+            context.add_assistant_message(result.get("response", ""))
+        
+        return {"ok": True, "data": result}
+    
+    except Exception as e:
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
+
+@chatbot_router.post("/conversation")
+def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depends(get_db)):
+    """
+    Chatbot endpoint that maintains full conversation context.
+    Requires a session_id to track the conversation.
+    """
+    try:
+        # Initialize chatbot service
+        print(
+            "[DEBUG chatbot_conversation] provider=",
+            settings.LLM_PROVIDER,
+            "model=",
+            settings.MODEL_NAME,
+            "ollama_base_url=",
+            settings.OLLAMA_BASE_URL,
+        )
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+        )
+        
+        # Get or create conversation context
+        context_manager = get_context_manager()
+        context = context_manager.get_or_create_context(
+            request.session_id,
+            max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
+        )
+        
+        # Add user message to context
+        context.add_user_message(request.question)
+        
+        # Process the query with full context
+        result = chatbot.process_query(
+            question=request.question,
+            context=context,
+            include_ml_analysis=True
+        )
+        
+        # Add response to context
+        if result.get("success"):
+            context.add_assistant_message(result.get("response", ""))
+        
+        # Include conversation history in response
+        result["conversation_history"] = context.get_messages_for_llm()
+        result["session_id"] = request.session_id
+        
+        return {"ok": True, "data": result}
+    
+    except Exception as e:
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
+
+@chatbot_router.get("/capabilities")
+def chatbot_capabilities(db: Session = Depends(get_db)):
+    print("DEBUG provider:", settings.LLM_PROVIDER, "model:", settings.MODEL_NAME)
+    """
+    Returns information about chatbot capabilities and supported queries.
+    """
+    try:
+        print(
+            "[DEBUG chatbot_capabilities] provider=",
+            settings.LLM_PROVIDER,
+            "model=",
+            settings.MODEL_NAME,
+            "ollama_base_url=",
+            settings.OLLAMA_BASE_URL,
+        )
+
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+)
+        
+        capabilities = chatbot.get_capabilities()
+        return {"ok": True, "data": capabilities}
+    
+    except Exception as e:
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
+
+@chatbot_router.post("/session/new")
+def create_chatbot_session():
+    """
+    Create a new chatbot session and return a session_id.
+    """
+    try:
+        session_id = str(uuid.uuid4())
+        context_manager = get_context_manager()
+        context = context_manager.create_context(
+            session_id,
+            max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
+        )
+        
+        return {
+            "ok": True,
+            "data": {
+                "session_id": session_id,
+                "created_at": context.created_at.isoformat(),
+                "max_messages": settings.CHATBOT_MAX_CONTEXT_MESSAGES
+            }
+        }
+    
+    except Exception as e:
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
+
+@chatbot_router.delete("/session/{session_id}")
+def delete_chatbot_session(session_id: str):
+    """
+    Delete a chatbot session and clear its context.
+    """
+    try:
+        context_manager = get_context_manager()
+        deleted = context_manager.delete_context(session_id)
+        
+        if deleted:
+            return {"ok": True, "data": {"message": "Session deleted successfully"}}
+        else:
+            print("Session not found for deletion")
+            return {
+                "ok": True,
+                "data": {
+                    "success": False,
+                    "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                    "query_type": "error"
+                }
+            }
+    
+    except Exception as e:
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
+
+@chatbot_router.get("/session/{session_id}")
+def get_chatbot_session(session_id: str):
+    """
+    Get conversation history for a specific session.
+    """
+    try:
+        context_manager = get_context_manager()
+        context = context_manager.get_context(session_id)
+        
+        if not context:
+            print(f"Session not found: {session_id}")
+            return {
+                "ok": True,
+                "data": {
+                    "success": False,
+                    "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                    "query_type": "error"
+                }
+            }
+        
+        return {"ok": True, "data": context.to_dict()}
+    
+    except Exception as e:
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 # =============================================================================
 # DIAGNÓSTICO DEL SIMULADOR
@@ -51,7 +334,16 @@ def process_telemetry_data(db: Session = Depends(get_db)):
         result = processor.process_new_telemetry()
         return {"ok": True, "data": result}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @api_router.get("/analytics/trayecto")
 def get_trayecto_completo(db: Session = Depends(get_db)):
@@ -125,7 +417,16 @@ def get_recent_measurements(limit: int = 500, db: Session = Depends(get_db)):
         return {"ok": True, "data": {"measurements": measurements}}
         
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 # =============================================================================
 # ENDPOINTS DE ANÁLISIS EXISTENTES
@@ -444,7 +745,16 @@ def get_sensors_status(db: Session = Depends(get_db)):
         return {"ok": True, "data": {"sensors": sensors}}
         
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }
 
 @api_router.get("/debug/telemetry-count")
 def debug_telemetry_count(db: Session = Depends(get_db)):
@@ -486,4 +796,13 @@ def debug_telemetry_count(db: Session = Depends(get_db)):
         }
         
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        print(f"Error in chatbot query endpoint: {e}")  # Log para debugging
+        return {
+            "ok": True,
+            "data": {
+                "success": False,
+                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "query_type": "error",
+                "error": str(e)  # Mantener para debugging interno
+            }
+        }

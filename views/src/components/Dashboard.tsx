@@ -18,6 +18,7 @@ const normalizeCabinId = (value?: string | null): string | null => {
   return `CAB-${padded}`;
 };
 
+
 type DashboardData = {
   kpis?: { 
     id: string; 
@@ -57,7 +58,7 @@ export function Dashboard() {
   const [data, setData] = useState<DashboardData>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCabin, setSelectedCabin] = useState<string>('all');
+  const [selectedCabin, setSelectedCabin] = useState<string>('CB001');
   const [initialized, setInitialized] = useState(false);
   const [initialCabinSet, setInitialCabinSet] = useState(false);
 
@@ -285,6 +286,7 @@ export function Dashboard() {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
@@ -803,5 +805,6 @@ export function Dashboard() {
         </Card>
       </div>
     </div>
+    </>
   );
 }

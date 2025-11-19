@@ -5,13 +5,24 @@ from typing import Optional
 # Cargar variables de entorno del sistema principal
 try:
     from dotenv import load_dotenv, find_dotenv
-    # Buscar .env en el directorio raíz del proyecto
-    env_file = find_dotenv()
-    if env_file:
+    from pathlib import Path
+    
+    # Buscar .env en el directorio raíz del proyecto (4 niveles arriba desde config.py)
+    current_file = Path(__file__).resolve()
+    project_root = current_file.parent.parent.parent.parent.parent
+    env_file = project_root / ".env"
+    
+    if env_file.exists():
         load_dotenv(env_file)
         print(f"Info: Cargando configuración desde: {env_file}")
     else:
-        print("Info: No se encontró archivo .env, usando valores por defecto")
+        # Intentar buscar con find_dotenv
+        env_file = find_dotenv()
+        if env_file:
+            load_dotenv(env_file)
+            print(f"Info: Cargando configuración desde: {env_file}")
+        else:
+            print("Info: No se encontró archivo .env, usando valores por defecto")
 except Exception as e:
     print(f"Info: No se pudo cargar archivo .env: {e}")
     # Continuar sin archivo .env
@@ -59,6 +70,16 @@ class Settings(BaseModel):
     
     # Logging
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    
+    # LLM Configuration
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    MODEL_NAME: str = os.getenv("MODEL_NAME", "llama3")
+    
+    # Chatbot Settings
+    CHATBOT_MAX_CONTEXT_MESSAGES: int = int(os.getenv("CHATBOT_MAX_CONTEXT_MESSAGES", "10"))
+    CHATBOT_SQL_ROW_LIMIT: int = int(os.getenv("CHATBOT_SQL_ROW_LIMIT", "100"))
+    CHATBOT_ENABLE_ML_ANALYSIS: bool = os.getenv("CHATBOT_ENABLE_ML_ANALYSIS", "true").lower() == "true"
 
     # Simulator
     ENABLE_SIMULATOR: bool = _ENABLE_SIMULATOR_ENV.lower() == "true"

@@ -1,8 +1,10 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from .api.routes import api_router
+from .api.routes import api_router, chatbot_router
 from .core.config import settings
+from .db.session import SessionLocal
+from .services.chatbot import ChatbotService
 from .services.telemetry_simulator import TelemetrySimulator
 import logging
 import os
@@ -42,12 +44,53 @@ def _write_audit(event: str, details: dict | None = None):
     except Exception as exc:
         logger.warning("No se pudo escribir en auditoria.log: %s", exc)
 
+
+def _init_chatbot() -> dict:
+    """Initializa el chatbot con Ollama y devuelve metadatos básicos."""
+    db = SessionLocal()
+    try:
+        chatbot = ChatbotService(
+            db=db,
+            llm_provider=settings.LLM_PROVIDER,
+            model_name=settings.MODEL_NAME,
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+        )
+
+        logger.info(
+            "Chatbot initialized (provider=%s, model=%s)",
+            chatbot.llm_provider,
+            chatbot.model_name,
+        )
+
+        return {
+            "initialized": True,
+            "provider": chatbot.llm_provider,
+            "model": chatbot.model_name,
+            "ml_analysis_enabled": chatbot.enable_ml_analysis,
+        }
+    except Exception as exc:
+        logger.error("Chatbot initialization failed: %s", exc)
+        return {
+            "initialized": False,
+            "error": str(exc),
+            "provider": settings.LLM_PROVIDER,
+            "model": settings.MODEL_NAME,
+        }
+    finally:
+        db.close()
+
 app = FastAPI(
     title=settings.SERVICE_NAME,
     version=settings.SERVICE_VERSION,
     description="Microservicio de análisis y procesamiento de telemetría para UrbanFlow Platform",
     debug=settings.DEBUG
 )
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    """Initializa componentes críticos (chatbot) al arrancar la aplicación."""
+    app.state.chatbot_info = _init_chatbot()
 
 # CORS middleware
 app.add_middleware(
@@ -67,16 +110,21 @@ def health():
         from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        
+
+        chatbot_info = getattr(app.state, "chatbot_info", {"initialized": False})
+
         return {
-            "ok": True, 
-            "service": "analytics", 
+            "ok": True,
+            "service": "analytics",
             "status": "up",
             "version": settings.SERVICE_VERSION,
-            "database": "connected"
+            "database": "connected",
+            "chatbot": chatbot_info,
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
+        chatbot_info = getattr(app.state, "chatbot_info", {"initialized": False, "error": str(e)})
+
         return JSONResponse(
             status_code=503,
             content={
@@ -85,7 +133,8 @@ def health():
                 "status": "down",
                 "version": settings.SERVICE_VERSION,
                 "database": "disconnected",
-                "error": str(e)
+                "error": str(e),
+                "chatbot": chatbot_info,
             }
         )
 
@@ -107,7 +156,8 @@ def root():
             "Análisis espectral",
             "Clasificación de estados operativos",
             "Predicciones ML"
-        ]
+        ],
+        "chatbot": getattr(app.state, "chatbot_info", {"initialized": False}),
     }
 
 # Manejo global de errores
@@ -129,6 +179,8 @@ async def general_exception_handler(request, exc):
     )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
+# Incluir router del chatbot con prefijo /api/chatbot
+app.include_router(chatbot_router, prefix="/api/chatbot")
 
 @app.on_event("startup")
 async def on_startup():
