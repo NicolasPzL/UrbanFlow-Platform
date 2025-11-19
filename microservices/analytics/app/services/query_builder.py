@@ -21,6 +21,99 @@ class QueryBuilder:
             'INSERT', 'UPDATE', 'GRANT', 'REVOKE'
         ]
     
+    def auto_correct_aggregation_query(self, sql_query: str) -> str:
+        """
+        Corregir consultas de agregación con límites incorrectos y filtros de tiempo innecesarios.
+        Detecta y corrige:
+        1. SELECT AVG(...) FROM ... ORDER BY ... LIMIT N
+        2. SELECT AVG(...) FROM ... WHERE timestamp >= NOW() - INTERVAL (sin que se solicite tiempo)
+        """
+        # Patrón 1: AVG/MAX/MIN/SUM con ORDER BY y LIMIT (necesita subconsulta)
+        pattern1 = r'SELECT\s+(AVG|MAX|MIN|SUM)\((\w+)\)\s+FROM\s+(\w+)(?:\s+WHERE\s+[^O]+)?\s+ORDER\s+BY\s+(\w+)\s+(?:DESC|ASC)?\s+LIMIT\s+(\d+)'
+        
+        match1 = re.search(pattern1, sql_query, re.IGNORECASE | re.DOTALL)
+        if match1:
+            agg_func, column, table, order_column, limit = match1.groups()
+            
+            print(f"[QUERY_BUILDER] Detectado patrón incorrecto de agregación con LIMIT")
+            print(f"[QUERY_BUILDER]   - Función: {agg_func}, Columna: {column}, Tabla: {table}")
+            print(f"[QUERY_BUILDER]   - Orden: {order_column}, Límite: {limit}")
+            print(f"[QUERY_BUILDER] Corrigiendo consulta automáticamente...")
+            
+            # Extraer WHERE clause si existe
+            where_match = re.search(r'WHERE\s+([^O]+?)(?=\s+ORDER\s+BY)', sql_query, re.IGNORECASE | re.DOTALL)
+            where_clause = f"WHERE {where_match.group(1).strip()}" if where_match else ""
+            
+            # Determinar columna de ordenamiento (preferir medicion_id sobre timestamp)
+            if order_column.lower() == 'timestamp':
+                order_col = 'medicion_id'  # Usar medicion_id para ordenar por registro
+                print(f"[QUERY_BUILDER] Cambiando ordenamiento de timestamp a medicion_id")
+            else:
+                order_col = order_column
+            
+            # Construir consulta corregida con subconsulta
+            if where_clause:
+                corrected_query = f"""SELECT {agg_func}({column}) as promedio_{column}
+FROM (
+    SELECT {column} 
+    FROM {table} 
+    {where_clause}
+    ORDER BY {order_col} DESC 
+    LIMIT {limit}
+) AS ultimas_mediciones"""
+            else:
+                corrected_query = f"""SELECT {agg_func}({column}) as promedio_{column}
+FROM (
+    SELECT {column} 
+    FROM {table} 
+    ORDER BY {order_col} DESC 
+    LIMIT {limit}
+) AS ultimas_mediciones"""
+            
+            print(f"[QUERY_BUILDER] Consulta corregida: {corrected_query[:150]}...")
+            return corrected_query.strip()
+        
+        # Patrón 2: AVG/MAX/MIN/SUM con WHERE timestamp (eliminar WHERE si no se solicita tiempo explícitamente)
+        # Solo para promedios simples sin ORDER BY ni LIMIT
+        pattern2 = r'SELECT\s+(AVG|MAX|MIN|SUM)\((\w+)\)\s+FROM\s+(\w+)\s+WHERE\s+timestamp\s*>=\s*NOW\(\)\s*-\s*INTERVAL\s+[\'"]\d+\s+(?:hour|hours|day|days|minute|minutes)[\'"]'
+        
+        match2 = re.search(pattern2, sql_query, re.IGNORECASE | re.DOTALL)
+        if match2:
+            agg_func, column, table = match2.groups()
+            
+            print(f"[QUERY_BUILDER] Detectado filtro de tiempo innecesario en consulta de promedio")
+            print(f"[QUERY_BUILDER]   - Función: {agg_func}, Columna: {column}, Tabla: {table}")
+            print(f"[QUERY_BUILDER] Eliminando WHERE clause con filtro de tiempo...")
+            
+            # Construir consulta corregida sin WHERE
+            corrected_query = f"SELECT {agg_func}({column}) as promedio_{column} FROM {table}"
+            
+            print(f"[QUERY_BUILDER] Consulta corregida: {corrected_query}")
+            return corrected_query.strip()
+        
+        return sql_query
+    
+    def validate_aggregation_query(self, sql_query: str) -> tuple[bool, Optional[str]]:
+        """
+        Validar consultas de agregación para detectar patrones incorrectos.
+        Returns (is_valid, error_message)
+        """
+        query_upper = sql_query.upper()
+        
+        # Patrones prohibidos: agregación con ORDER BY y LIMIT en la misma consulta externa
+        forbidden_patterns = [
+            r'SELECT\s+AVG\([^)]+\)[^]*ORDER\s+BY[^]*LIMIT\s+\d+',
+            r'SELECT\s+MAX\([^)]+\)[^]*ORDER\s+BY[^]*LIMIT\s+\d+',
+            r'SELECT\s+MIN\([^)]+\)[^]*ORDER\s+BY[^]*LIMIT\s+\d+',
+            r'SELECT\s+SUM\([^)]+\)[^]*ORDER\s+BY[^]*LIMIT\s+\d+',
+        ]
+        
+        for pattern in forbidden_patterns:
+            if re.search(pattern, sql_query, re.IGNORECASE | re.DOTALL):
+                return False, "Consulta inválida: No se puede usar ORDER BY y LIMIT directamente con funciones de agregación (AVG, MAX, MIN, SUM). Use una subconsulta."
+        
+        return True, None
+    
     def validate_query(self, sql_query: str) -> tuple[bool, Optional[str]]:
         """
         Validate that a SQL query is safe to execute.
@@ -44,17 +137,30 @@ class QueryBuilder:
         if cleaned_query.count(';') > 1:
             return False, "Multiple statements are not allowed"
         
+        # Validar consultas de agregación
+        is_valid_agg, agg_error = self.validate_aggregation_query(sql_query)
+        if not is_valid_agg:
+            return False, agg_error
+        
         return True, None
     
     def add_limit_if_missing(self, sql_query: str) -> str:
         """
         Add LIMIT clause if not present to prevent excessive results.
+        But don't add LIMIT for aggregations (COUNT, SUM, AVG, etc.) or when explicitly not needed.
         """
         query_upper = sql_query.upper()
         if 'LIMIT' not in query_upper:
-            # Remove trailing semicolon if present
-            sql_query = sql_query.rstrip().rstrip(';')
-            sql_query += f" LIMIT {self.max_rows}"
+            # Don't add LIMIT for aggregation queries (they return single row anyway)
+            aggregation_keywords = ['COUNT(', 'SUM(', 'AVG(', 'MAX(', 'MIN(', 'GROUP BY', 'HAVING']
+            has_aggregation = any(keyword in query_upper for keyword in aggregation_keywords)
+            
+            # Don't add LIMIT if query explicitly requests all data
+            # (though this is rare, we check for patterns like "SELECT ALL" or similar)
+            if not has_aggregation:
+                # Remove trailing semicolon if present
+                sql_query = sql_query.rstrip().rstrip(';')
+                sql_query += f" LIMIT {self.max_rows}"
         return sql_query
     
     def execute_query(self, sql_query: str) -> Dict[str, Any]:
@@ -62,42 +168,91 @@ class QueryBuilder:
         Execute a validated SQL query and return results.
         Returns dict with 'success', 'data', 'error', 'row_count', 'columns'
         """
+        print(f"\n[QUERY_BUILDER] Ejecutando consulta SQL...")
+        print(f"[QUERY_BUILDER] Consulta original: {sql_query[:200]}...")
+        
         try:
+            # Intentar corregir automáticamente consultas de agregación incorrectas
+            print("[QUERY_BUILDER] Verificando si necesita corrección automática...")
+            sql_query_corrected = self.auto_correct_aggregation_query(sql_query)
+            if sql_query_corrected != sql_query:
+                print("[QUERY_BUILDER] Consulta corregida automáticamente ✓")
+                sql_query = sql_query_corrected
+            
             # Validate query
+            print("[QUERY_BUILDER] Validando consulta...")
             is_valid, error = self.validate_query(sql_query)
             if not is_valid:
+                print(f"[QUERY_BUILDER] ERROR: Consulta no válida - {error}")
                 return {
                     "success": False,
                     "error": error,
                     "data": [],
                     "row_count": 0
                 }
+            print("[QUERY_BUILDER] Consulta válida ✓")
             
             # Add LIMIT if missing
+            sql_query_before_limit = sql_query
             sql_query = self.add_limit_if_missing(sql_query)
+            if sql_query != sql_query_before_limit:
+                print(f"[QUERY_BUILDER] LIMIT agregado automáticamente")
+                print(f"[QUERY_BUILDER] Consulta con LIMIT: {sql_query}")
             
             # Execute query
+            print("[QUERY_BUILDER] Ejecutando consulta en base de datos...")
             result = self.db.execute(text(sql_query))
+            print("[QUERY_BUILDER] Consulta ejecutada exitosamente")
             
             # Fetch results
+            print("[QUERY_BUILDER] Obteniendo resultados...")
             rows = result.fetchall()
             columns = list(result.keys()) if rows else []
+            print(f"[QUERY_BUILDER] Filas obtenidas: {len(rows)}, Columnas: {len(columns)}")
+            if columns:
+                print(f"[QUERY_BUILDER] Nombres de columnas: {columns}")
             
             # Convert to list of dicts
+            print("[QUERY_BUILDER] Convirtiendo resultados a formato JSON...")
             data = []
-            for row in rows:
+            for idx, row in enumerate(rows):
                 row_dict = {}
                 for i, col in enumerate(columns):
                     value = row[i]
                     # Convert special types to JSON-serializable formats
-                    if hasattr(value, 'isoformat'):  # datetime
+                    if value is None:
+                        row_dict[col] = None
+                    elif hasattr(value, 'isoformat'):  # datetime, date
                         value = value.isoformat()
                     elif isinstance(value, (bytes, bytearray)):
                         value = value.hex()
-                    elif hasattr(value, '__float__'):  # Decimal, etc.
-                        value = float(value)
+                    elif hasattr(value, '__float__') and not isinstance(value, (int, float, bool)):  # Decimal, etc.
+                        try:
+                            value = float(value)
+                        except (ValueError, TypeError):
+                            value = str(value)
+                    elif isinstance(value, dict):
+                        # Handle JSONB/JSON types - already a dict, keep as is
+                        value = value
+                    elif isinstance(value, list):
+                        # Handle array types - convert to list if needed
+                        value = list(value) if not isinstance(value, list) else value
+                    elif hasattr(value, '__dict__'):  # Custom objects
+                        # Try to convert to dict or string
+                        try:
+                            import json
+                            value = json.loads(json.dumps(value, default=str))
+                        except:
+                            value = str(value)
+                    else:
+                        # Keep as is for int, float, bool, str
+                        value = value
                     row_dict[col] = value
                 data.append(row_dict)
+                if idx == 0 and len(rows) > 0:
+                    print(f"[QUERY_BUILDER] Primera fila convertida: {list(row_dict.keys())[:5]}...")
+            
+            print(f"[QUERY_BUILDER] Conversión completada: {len(data)} filas procesadas")
             
             return {
                 "success": True,
@@ -108,6 +263,9 @@ class QueryBuilder:
             }
             
         except Exception as e:
+            print(f"[QUERY_BUILDER] ERROR ejecutando consulta: {e}")
+            import traceback
+            print(f"[QUERY_BUILDER] Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e),
