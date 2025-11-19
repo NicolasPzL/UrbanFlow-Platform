@@ -295,10 +295,45 @@ class TelemetryProcessor:
             return None
     
     def _calculate_single_row_vibration_metrics(self, row):
-        """Calcula métricas vibracionales para una sola fila"""
+        """Calcula métricas vibracionales para una sola fila usando datos reales de telemetria_cruda"""
         try:
             velocity_ms_value = float(row.velocidad_kmh) / 3.6 if hasattr(row, 'velocidad_kmh') and row.velocidad_kmh is not None else None
 
+            # Extraer valores reales de vibración de la fila
+            vib_x = float(row.vibracion_x) if hasattr(row, 'vibracion_x') and row.vibracion_x is not None else None
+            vib_y = float(row.vibracion_y) if hasattr(row, 'vibracion_y') and row.vibracion_y is not None else None
+            vib_z = float(row.vibracion_z) if hasattr(row, 'vibracion_z') and row.vibracion_z is not None else None
+
+            # Si tenemos datos reales de vibración, usarlos para generar una ventana más realista
+            if vib_x is not None and vib_y is not None and vib_z is not None:
+                # Calcular magnitud del vector de vibración
+                magnitude_single = math.sqrt(vib_x**2 + vib_y**2 + vib_z**2)
+                
+                # Crear una ventana de datos basada en los valores reales
+                # Expandir los valores reales en una serie temporal para calcular métricas espectrales
+                window_size = 60  # 60 muestras para análisis espectral
+                
+                # Generar variación alrededor de los valores reales para simular una ventana temporal
+                # Usar los valores reales como base y agregar variación realista
+                base_freq = 5.0 + 0.6 * (velocity_ms_value if velocity_ms_value else 5.0)
+                t = np.linspace(0, 2 * np.pi, window_size)
+                
+                # Crear ejes basados en los valores reales con variación temporal
+                vib_x_series = vib_x * (1.0 + 0.15 * np.sin(base_freq * t) + 0.1 * np.random.randn(window_size))
+                vib_y_series = vib_y * (1.0 + 0.15 * np.sin(base_freq * t + 2*np.pi/3) + 0.1 * np.random.randn(window_size))
+                vib_z_series = vib_z * (1.0 + 0.15 * np.sin(base_freq * t + 4*np.pi/3) + 0.1 * np.random.randn(window_size))
+                
+                # Asegurar que la media de la serie sea similar al valor real
+                vib_x_series = vib_x_series - np.mean(vib_x_series) + vib_x
+                vib_y_series = vib_y_series - np.mean(vib_y_series) + vib_y
+                vib_z_series = vib_z_series - np.mean(vib_z_series) + vib_z
+                
+                axes = np.vstack([vib_x_series, vib_y_series, vib_z_series])
+                velocity_series = np.full(window_size, velocity_ms_value if velocity_ms_value else 5.0)
+                
+                return self._metrics_from_axes(axes, velocity_series)
+            
+            # Si no hay datos reales, usar el método sintético pero mejorado
             available_components = []
             for axis in ['vibracion_x', 'vibracion_y', 'vibracion_z']:
                 value = getattr(row, axis, None)
@@ -312,7 +347,7 @@ class TelemetryProcessor:
                     target_rms = vector_magnitude / math.sqrt(2.0)
 
             velocity_profile = np.array([velocity_ms_value]) if velocity_ms_value is not None else np.array([])
-            synthetic_axes, velocity_series = self._create_synthetic_axes(velocity_profile, target_rms=target_rms)
+            synthetic_axes, velocity_series = self._create_synthetic_axes(velocity_profile, target_rms=target_rms, sample_count=60)
             return self._metrics_from_axes(synthetic_axes, velocity_series)
             
         except Exception as e:
@@ -535,27 +570,46 @@ class TelemetryProcessor:
             velocity_array = np.array([5.0])
 
         avg_vel = float(np.clip(np.mean(velocity_array), 0.0, 30.0))
+        fs = 1000  # Frecuencia de muestreo en Hz
 
-        freq_media = float(np.clip(10.0 + 1.4 * avg_vel, 5.0, 240.0))
-        freq_dominante = float(np.clip(freq_media + 0.6 * avg_vel, 5.0, 260.0))
+        # Calcular frecuencias en Hz basadas en velocidad y RMS
+        # Las frecuencias más altas se asocian con mayor velocidad
+        freq_media_hz = float(np.clip(10.0 + 1.4 * avg_vel, 5.0, 240.0))
+        freq_dominante_hz = float(np.clip(freq_media_hz + 0.6 * avg_vel, 5.0, 260.0))
+        
+        # Normalizar frecuencias al rango 0-1 (dividir por fs para consistencia con FFT)
+        freq_media = freq_media_hz / fs
+        freq_dominante = freq_dominante_hz / fs
+        
+        # Amplitud espectral basada en RMS y velocidad
+        # Mayor velocidad y RMS = mayor amplitud espectral
         amplitud_espectral = float(max(rms, 0.05) * (1.02 + avg_vel / 90.0))
-
+        
+        # Calcular energía total basada en RMS y número de muestras
         energia_total = float(max(0.02, (rms ** 2) * max(sample_count, 1)))
-        low_weight = 0.58 - avg_vel / 90.0
-        mid_weight = 0.32 + avg_vel / 140.0
+        
+        # Distribución de energía por bandas basada en velocidad
+        # A mayor velocidad, más energía en bandas medias y altas
+        low_weight = np.clip(0.58 - avg_vel / 90.0, 0.1, 0.7)
+        mid_weight = np.clip(0.32 + avg_vel / 140.0, 0.15, 0.5)
         high_weight = 1.0 - (low_weight + mid_weight)
+        high_weight = np.clip(high_weight, 0.1, 0.4)
 
         weights = np.array([low_weight, mid_weight, high_weight])
-        weights = np.clip(weights, 0.05, None)
-        weights = weights / np.sum(weights)
+        weights = weights / np.sum(weights)  # Normalizar
 
         energia_banda_1 = float(energia_total * weights[0])
         energia_banda_2 = float(energia_total * weights[1])
         energia_banda_3 = float(energia_total * weights[2])
+        
+        # Asegurar valores mínimos para evitar ceros
+        energia_banda_1 = max(energia_banda_1, 0.01)
+        energia_banda_2 = max(energia_banda_2, 0.01)
+        energia_banda_3 = max(energia_banda_3, 0.01)
 
         return {
-            'frecuencia_media': freq_media,
-            'frecuencia_dominante': freq_dominante,
+            'frecuencia_media': freq_media,  # Normalizado 0-1
+            'frecuencia_dominante': freq_dominante,  # Normalizado 0-1
             'amplitud_max_espectral': amplitud_espectral,
             'energia_banda_1': energia_banda_1,
             'energia_banda_2': energia_banda_2,
@@ -606,6 +660,7 @@ class TelemetryProcessor:
         min_samples = 6
         if len(vib_data) < min_samples:
             rms = float(np.sqrt(np.mean(vib_data**2))) if len(vib_data) > 0 else 0.08
+            # Usar perfil espectral mejorado cuando hay pocos datos
             return self._generate_spectral_profile(rms, velocity_ms, sample_count=max(len(vib_data), 1))
         
         # FFT
@@ -613,16 +668,31 @@ class TelemetryProcessor:
         freqs = fftfreq(len(vib_data))
         amplitudes = np.abs(fft_data)
         
-        # Frecuencia media (centroide espectral)
-        freq_weights = freqs * amplitudes
-        frecuencia_media = float(np.sum(freq_weights) / np.sum(amplitudes)) if np.sum(amplitudes) > 0 else 0.0
+        # Filtrar amplitudes muy pequeñas para evitar ruido
+        threshold = np.max(amplitudes) * 0.01  # 1% del máximo
+        amplitudes_filtered = np.where(amplitudes < threshold, 0, amplitudes)
         
-        # Frecuencia dominante
-        dominant_idx = np.argmax(amplitudes)
-        frecuencia_dominante = float(freqs[dominant_idx])
+        # Frecuencia media (centroide espectral) - solo usar frecuencias positivas
+        positive_mask = freqs > 0
+        if np.sum(amplitudes_filtered[positive_mask]) > 0:
+            freq_weights = freqs[positive_mask] * amplitudes_filtered[positive_mask]
+            frecuencia_media = float(np.sum(freq_weights) / np.sum(amplitudes_filtered[positive_mask]))
+        else:
+            # Fallback: usar perfil espectral basado en RMS
+            rms = float(np.sqrt(np.mean(vib_data**2)))
+            return self._generate_spectral_profile(rms, velocity_ms, sample_count=len(vib_data))
+        
+        # Frecuencia dominante (solo en frecuencias positivas)
+        positive_amplitudes = amplitudes_filtered[positive_mask]
+        if np.sum(positive_amplitudes) > 0:
+            dominant_idx = np.argmax(positive_amplitudes)
+            positive_freqs = freqs[positive_mask]
+            frecuencia_dominante = float(positive_freqs[dominant_idx])
+        else:
+            frecuencia_dominante = frecuencia_media
         
         # Amplitud máxima espectral
-        amplitud_max_espectral = float(np.max(amplitudes))
+        amplitud_max_espectral = float(np.max(amplitudes_filtered))
         
         # Energías por bandas de frecuencia
         # Banda 1: 0-50 Hz (baja frecuencia)
@@ -634,18 +704,28 @@ class TelemetryProcessor:
         freqs_hz = freqs * fs
         
         # Filtrar frecuencias positivas
-        positive_freqs = freqs_hz > 0
-        freqs_pos = freqs_hz[positive_freqs]
-        amps_pos = amplitudes[positive_freqs]
+        positive_freqs_hz = freqs_hz[positive_mask]
+        amps_pos = amplitudes_filtered[positive_mask]
         
-        # Calcular energías por banda
-        energia_banda_1 = float(np.sum(amps_pos[(freqs_pos >= 0) & (freqs_pos < 50)]**2))
-        energia_banda_2 = float(np.sum(amps_pos[(freqs_pos >= 50) & (freqs_pos < 200)]**2))
-        energia_banda_3 = float(np.sum(amps_pos[freqs_pos >= 200]**2))
+        # Calcular energías por banda (usar valores al cuadrado para energía)
+        energia_banda_1 = float(np.sum(amps_pos[(positive_freqs_hz >= 0) & (positive_freqs_hz < 50)]**2))
+        energia_banda_2 = float(np.sum(amps_pos[(positive_freqs_hz >= 50) & (positive_freqs_hz < 200)]**2))
+        energia_banda_3 = float(np.sum(amps_pos[positive_freqs_hz >= 200]**2))
+        
+        # Asegurar que las frecuencias estén en el rango esperado (0-0.34 normalizado o Hz)
+        # Convertir frecuencia_media y frecuencia_dominante a Hz
+        frecuencia_media_hz = abs(frecuencia_media * fs)
+        frecuencia_dominante_hz = abs(frecuencia_dominante * fs)
+        
+        # Si las energías son muy pequeñas, usar el perfil espectral como fallback
+        energia_total = energia_banda_1 + energia_banda_2 + energia_banda_3
+        if energia_total < 1e-6:
+            rms = float(np.sqrt(np.mean(vib_data**2)))
+            return self._generate_spectral_profile(rms, velocity_ms, sample_count=len(vib_data))
         
         return {
-            'frecuencia_media': abs(frecuencia_media),
-            'frecuencia_dominante': abs(frecuencia_dominante),
+            'frecuencia_media': frecuencia_media_hz / fs,  # Normalizar a 0-1 para consistencia
+            'frecuencia_dominante': frecuencia_dominante_hz / fs,  # Normalizar a 0-1
             'amplitud_max_espectral': amplitud_max_espectral,
             'energia_banda_1': energia_banda_1,
             'energia_banda_2': energia_banda_2,

@@ -30,13 +30,15 @@ except Exception as e:
 # Construcción de la URL de base de datos usando las mismas variables que db.js
 def _build_db_url() -> str:
     user = os.getenv("DB_USER", "postgres")
-    password = os.getenv("DB_PASSWORD", "password")  # Usar 'password' como en db.js
+    password = os.getenv("DB_PASSWORD", "password")
     host = os.getenv("DB_HOST", "localhost")
     port = os.getenv("DB_PORT", "5432")
-    name = os.getenv("DB_NAME", "Urbanflow_db")  # Usar 'Urbanflow_db' como en db.js
+    name = os.getenv("DB_NAME", "urbanflow_db")  # Usar minúsculas para consistencia
     return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}"
 
-_DATABASE_URL_DEFAULT = _build_db_url()
+# Prioridad: ANALYTICS_DATABASE_URL > DATABASE_URL > construir desde DB_*
+_DATABASE_URL_ENV = os.getenv("ANALYTICS_DATABASE_URL") or os.getenv("DATABASE_URL")
+_DATABASE_URL_DEFAULT = _DATABASE_URL_ENV if _DATABASE_URL_ENV else _build_db_url()
 _DEBUG_DEFAULT = os.getenv("DEBUG", "false").lower() == "true"
 _ENABLE_SIMULATOR_ENV = os.getenv("ENABLE_SIMULATOR")
 if _ENABLE_SIMULATOR_ENV is None:
