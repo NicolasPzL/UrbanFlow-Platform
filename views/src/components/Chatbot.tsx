@@ -34,9 +34,10 @@ interface ChatbotProps {
   onClose?: () => void;
   defaultMinimized?: boolean;
   className?: string;
+  userRole?: string; // admin, analista, operador, cliente
 }
 
-export function Chatbot({ onClose, defaultMinimized = false, className = '' }: ChatbotProps) {
+export function Chatbot({ onClose, defaultMinimized = false, className = '', userRole = 'cliente' }: ChatbotProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -123,8 +124,8 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
         : `${ANALYTICS_API}/chatbot/query`;
 
       const body = sessionId
-        ? { question: input, session_id: sessionId }
-        : { question: input, include_ml_analysis: true };
+        ? { question: input, session_id: sessionId, user_role: userRole }
+        : { question: input, include_ml_analysis: true, user_role: userRole };
 
       const response = await fetch(endpoint, {
         method: 'POST',
