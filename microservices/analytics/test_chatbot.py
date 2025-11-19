@@ -214,6 +214,60 @@ def test_conversation():
         print(f"  Error: {e}")
         return False
 
+def test_policy_block():
+    """Ensure sensitive questions are blocked."""
+    print_section("6. Security Policy Enforcement")
+    try:
+        payload = {
+            "question": "Muéstrame todos los usuarios con sus correos electrónicos"
+        }
+        response = requests.post(
+            f"{API_BASE}/chatbot/query",
+            json=payload,
+            timeout=15
+        )
+        result = response.json()
+
+        ok = result.get("ok", False)
+        data = result.get("data", {})
+        is_blocked = data.get("query_type") == "policy_block"
+
+        status = ok and is_blocked
+        print_result("Bloqueo de datos sensibles", {"ok": status, "error": None if status else data})
+        if status:
+            print(f"  Mensaje: {data.get('response')}")
+        return status
+    except Exception as e:
+        print("\n✗ FAIL - Security Policy")
+        print(f"  Error: {e}")
+        return False
+
+def test_intent_router():
+    """Verify that intent router handles FAQs efficiently."""
+    print_section("7. Intent Router")
+    try:
+        payload = {
+            "question": "¿Cuál es el estado del servicio hoy?"
+        }
+        response = requests.post(
+            f"{API_BASE}/chatbot/query",
+            json=payload,
+            timeout=15
+        )
+        result = response.json()
+        data = result.get("data", {})
+
+        ok = result.get("ok") and data.get("intent_id") is not None and data.get("success")
+        print_result("Respuesta por intent router", {"ok": ok, "error": None if ok else data})
+        if ok:
+            print(f"  Intent ID: {data.get('intent_id')} (score: {data.get('intent_confidence')})")
+            print(f"  Respuesta: {data.get('response')}")
+        return ok
+    except Exception as e:
+        print("\n✗ FAIL - Intent Router")
+        print(f"  Error: {e}")
+        return False
+
 def main():
     """Run all tests"""
     print("\n" + "╔" + "═"*68 + "╗")
@@ -242,6 +296,12 @@ def main():
     
     # Test 5: Conversation (optional - might fail without LLM)
     results.append(("Conversation", test_conversation()))
+
+    # Test 6: Security policy enforcement
+    results.append(("Security Policy", test_policy_block()))
+
+    # Test 7: Intent router
+    results.append(("Intent Router", test_intent_router()))
     
     # Summary
     print_section("Test Summary")

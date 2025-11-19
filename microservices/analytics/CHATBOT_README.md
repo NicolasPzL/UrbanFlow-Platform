@@ -27,6 +27,11 @@ The UrbanFlow AI Chatbot is an intelligent assistant that allows users to query 
 - Manages multiple concurrent sessions
 - Provides context to LLM for better responses
 
+**`app/services/intent_router.py`** - Intent routing y caché
+- Detecta preguntas frecuentes usando embeddings (Ollama o fallback BoW)
+- Entrega respuestas aprobadas o ejecuta SQL certificadas sin llamar al LLM
+- Mantiene un caché LRU configurable para minimizar latencia
+
 #### 2. Configuration Files
 
 **`app/core/prompts.py`** - Specialized prompts for different query types
@@ -47,6 +52,13 @@ The UrbanFlow AI Chatbot is an intelligent assistant that allows users to query 
 - API keys
 - Chatbot parameters
 
+**`app/core/role_catalog.py`** - Catálogo estático de roles y permisos
+- Describe roles aprobados sin consultar la tabla `usuarios`
+- Facilita auditorías y respuestas controladas para preguntas sobre roles
+
+**`app/data/faq_catalog.json`** - Catálogo de preguntas frecuentes
+- Define intents aprobados por audiencia (ciudadano/staff)
+- Usado por `intent_router.py` para respuestas guiadas sin LLM
 #### 3. API Endpoints
 
 ```
@@ -102,6 +114,9 @@ Copy `.env.example` to `.env` and configure:
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
 MODEL_NAME=llama3
+CHATBOT_INTENT_THRESHOLD=0.82         # Umbral de similitud para intents
+CHATBOT_INTENT_CACHE_SIZE=128         # Tamaño del caché LRU de intents
+CHATBOT_INTENT_EMBED_MODEL=nomic-embed-text  # Modelo de embeddings para intents
 ```
 
 ### 3. Instala Ollama (si aún no lo tienes)
@@ -198,6 +213,7 @@ This approach:
    - Dangerous keywords blocked (DROP, DELETE, etc.)
    - Prevents SQL injection
    - Row limits enforced
+   - Bloqueo de tablas sensibles (`usuarios`, `audit_log`, `roles`) según políticas ISO/IEC 27001
 
 2. **Session Management**
    - Isolated conversation contexts
@@ -208,6 +224,16 @@ This approach:
    - Graceful fallbacks for LLM failures
    - User-friendly error messages
    - Service availability checks
+
+4. **Role-aware Access Control**
+   - Cabecera `X-User-Role` define el perfil (ciudadano vs staff)
+   - Catálogo estático (`role_catalog.py`) evita consultar datos personales
+   - Ciudadanos reciben respuestas públicas; personal autorizado mantiene analítica avanzada
+
+5. **Intent Router con Caché**
+   - FAQ resueltas mediante embeddings (`CHATBOT_INTENT_EMBED_MODEL`)
+   - Caché LRU configurable (`CHATBOT_INTENT_CACHE_SIZE`)
+   - Registra coincidencias (`intent_id`, `intent_confidence`) para auditoría ISO 9001 e ISO/IEC 25010
 
 ## Performance Optimization
 

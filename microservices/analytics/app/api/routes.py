@@ -35,7 +35,11 @@ class ChatbotConversationRequest(BaseModel):
 # =============================================================================
 
 @chatbot_router.post("/query")
-def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
+def chatbot_query(
+    payload: ChatbotQueryRequest,
+    fastapi_request: Request,
+    db: Session = Depends(get_db)
+):
     """
     Main chatbot endpoint for natural language queries.
     Can optionally maintain conversation context via session_id.
@@ -50,28 +54,32 @@ def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
             "ollama_base_url=",
             settings.OLLAMA_BASE_URL,
         )
+        role_header = fastapi_request.headers.get("x-user-role") or ""
+        roles_header = fastapi_request.headers.get("x-user-roles") or ""
         chatbot = ChatbotService(
             db=db,
             llm_provider=settings.LLM_PROVIDER,
             model_name=settings.MODEL_NAME,
-            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS,
+            user_role=role_header,
+            extra_roles=roles_header.split(",") if roles_header else None
         )
         
         # Get or create conversation context
         context = None
-        if request.session_id:
+        if payload.session_id:
             context_manager = get_context_manager()
             context = context_manager.get_or_create_context(
-                request.session_id,
+                payload.session_id,
                 max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
             )
-            context.add_user_message(request.question)
+            context.add_user_message(payload.question)
         
         # Process the query
         result = chatbot.process_query(
-            question=request.question,
+            question=payload.question,
             context=context,
-            include_ml_analysis=request.include_ml_analysis
+            include_ml_analysis=payload.include_ml_analysis
         )
         
         # Add response to context if session exists
@@ -93,7 +101,11 @@ def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
         }
 
 @chatbot_router.post("/conversation")
-def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depends(get_db)):
+def chatbot_conversation(
+    payload: ChatbotConversationRequest,
+    fastapi_request: Request,
+    db: Session = Depends(get_db)
+):
     """
     Chatbot endpoint that maintains full conversation context.
     Requires a session_id to track the conversation.
@@ -108,26 +120,30 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
             "ollama_base_url=",
             settings.OLLAMA_BASE_URL,
         )
+        role_header = fastapi_request.headers.get("x-user-role") or ""
+        roles_header = fastapi_request.headers.get("x-user-roles") or ""
         chatbot = ChatbotService(
             db=db,
             llm_provider=settings.LLM_PROVIDER,
             model_name=settings.MODEL_NAME,
-            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS,
+            user_role=role_header,
+            extra_roles=roles_header.split(",") if roles_header else None
         )
         
         # Get or create conversation context
         context_manager = get_context_manager()
         context = context_manager.get_or_create_context(
-            request.session_id,
+            payload.session_id,
             max_messages=settings.CHATBOT_MAX_CONTEXT_MESSAGES
         )
         
         # Add user message to context
-        context.add_user_message(request.question)
+        context.add_user_message(payload.question)
         
         # Process the query with full context
         result = chatbot.process_query(
-            question=request.question,
+            question=payload.question,
             context=context,
             include_ml_analysis=True
         )
@@ -138,7 +154,7 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
         
         # Include conversation history in response
         result["conversation_history"] = context.get_messages_for_llm()
-        result["session_id"] = request.session_id
+        result["session_id"] = payload.session_id
         
         return {"ok": True, "data": result}
     
@@ -155,7 +171,7 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
         }
 
 @chatbot_router.get("/capabilities")
-def chatbot_capabilities(db: Session = Depends(get_db)):
+def chatbot_capabilities(fastapi_request: Request, db: Session = Depends(get_db)):
     print("DEBUG provider:", settings.LLM_PROVIDER, "model:", settings.MODEL_NAME)
     """
     Returns information about chatbot capabilities and supported queries.
@@ -170,12 +186,16 @@ def chatbot_capabilities(db: Session = Depends(get_db)):
             settings.OLLAMA_BASE_URL,
         )
 
+        role_header = fastapi_request.headers.get("x-user-role") or ""
+        roles_header = fastapi_request.headers.get("x-user-roles") or ""
         chatbot = ChatbotService(
             db=db,
             llm_provider=settings.LLM_PROVIDER,
             model_name=settings.MODEL_NAME,
-            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS
-)
+            enable_ml_analysis=settings.CHATBOT_ENABLE_ML_ANALYSIS,
+            user_role=role_header,
+            extra_roles=roles_header.split(",") if roles_header else None
+        )
         
         capabilities = chatbot.get_capabilities()
         return {"ok": True, "data": capabilities}

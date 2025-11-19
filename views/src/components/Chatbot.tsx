@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -27,6 +27,8 @@ interface Message {
     sql_query?: string;
     row_count?: number;
     data?: any[];
+    intent_id?: string;
+    intent_confidence?: number;
   };
 }
 
@@ -34,9 +36,10 @@ interface ChatbotProps {
   onClose?: () => void;
   defaultMinimized?: boolean;
   className?: string;
+  userRole?: string;
 }
 
-export function Chatbot({ onClose, defaultMinimized = false, className = '' }: ChatbotProps) {
+export function Chatbot({ onClose, defaultMinimized = false, className = '', userRole }: ChatbotProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,19 +52,59 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
   // Usar rutas relativas para que pasen por el proxy del backend Node
   const ANALYTICS_API = '/api';
 
+  const normalizedRole = (userRole ?? '').toLowerCase();
+  const isCitizen = normalizedRole === 'cliente' || normalizedRole === 'ciudadano';
+  const isStaff = ['admin', 'operador', 'analista'].includes(normalizedRole);
+
+  const welcomeMessage = useMemo(() => {
+    if (isCitizen) {
+      return (
+        '¡Hola! Soy tu asistente de UrbanFlow para la ciudadanía. ' +
+        'Puedo informarte sobre el estado general del servicio, recomendaciones y roles oficiales, ' +
+        'protegiendo siempre los datos sensibles conforme a las normas ISO aplicables. ¿En qué puedo ayudarte hoy?'
+      );
+    }
+    if (isStaff) {
+      return (
+        'Hola, estoy listo para ayudarte con consultas operativas, analíticas y reportes del sistema. ' +
+        'Recuerda que cumplimos las políticas ISO de seguridad: evita solicitar datos personales o auditorías.'
+      );
+    }
+    return (
+      '¡Hola! Puedo orientarte sobre UrbanFlow y su operación. Si necesitas detalles técnicos, inicia sesión con un rol autorizado.'
+    );
+  }, [isCitizen, isStaff]);
+
+  const suggestedQuestions = useMemo(() => {
+    if (isCitizen) {
+      return [
+        "¿Cuál es el estado del servicio hoy?",
+        "¿Cuántas cabinas están disponibles para pasajeros?",
+        "¿Qué roles existen en UrbanFlow?",
+        "¿Qué recomendaciones de seguridad debo seguir?"
+      ];
+    }
+    return [
+      "¿Cuántas cabinas están operativas?",
+      "Muéstrame las últimas 10 mediciones del sensor 1",
+      "¿Cuál es el valor promedio de RMS de las últimas 24 horas?",
+      "¿Cuántas cabinas están en estado de alerta?",
+      "Genera un reporte de salud del sistema",
+      "¿Qué hace UrbanFlow?"
+    ];
+  }, [isCitizen]);
+
   useEffect(() => {
-    // Create a new session when component mounts
+    setSessionId(null);
     createNewSession();
-    // Fetch capabilities
     fetchCapabilities();
-    
-    // Add welcome message
+
     setMessages([{
       role: 'assistant',
-      content: '¡Hola! Soy tu asistente de IA de UrbanFlow, potenciado por Ollama (Llama 3). Puedo ayudarte con:\n\n• Consultar datos de sensores en tiempo real e históricos\n• Analizar la salud y el rendimiento del sistema\n• Identificar tendencias y anomalías\n• Generar reportes\n• Insights de mantenimiento predictivo\n\n¿En qué puedo ayudarte?',
+      content: welcomeMessage,
       timestamp: new Date()
     }]);
-  }, []);
+  }, [welcomeMessage]);
 
   useEffect(() => {
     // Scroll to bottom when new messages arrive
@@ -144,7 +187,9 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
             query_type: result.data.query_type,
             sql_query: result.data.sql_query,
             row_count: result.data.row_count,
-            data: result.data.data
+            data: result.data.data,
+            intent_id: result.data.intent_id,
+            intent_confidence: result.data.intent_confidence
           }
         };
         setMessages(prev => [...prev, assistantMessage]);
@@ -191,7 +236,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     if (!text) return null;
     
     const lines = text.split('\n');
-    const elements: JSX.Element[] = [];
+    const elements: React.ReactElement[] = [];
     let currentParagraph: string[] = [];
     let listItems: string[] = [];
     let inList = false;
@@ -272,8 +317,8 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
     return elements.length > 0 ? elements : [<p key="empty" className="mb-3">{parseInlineMarkdown(text)}</p>];
   };
   
-  const parseInlineMarkdown = (text: string): (string | JSX.Element)[] => {
-    const parts: (string | JSX.Element)[] = [];
+  const parseInlineMarkdown = (text: string): (string | React.ReactElement)[] => {
+    const parts: (string | React.ReactElement)[] = [];
     let currentIndex = 0;
     const boldRegex = /\*\*([^*]+)\*\*/g;
     let match;
@@ -303,6 +348,23 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
   };
 
   const renderMessageContent = (message: Message) => {
+    const hasIntentBadge = Boolean(message.metadata?.intent_id);
+    const hasTypeBadge = Boolean(message.metadata?.query_type);
+    const badges = (hasIntentBadge || hasTypeBadge) ? (
+      <div className="flex items-center gap-2 mb-2">
+        {hasIntentBadge && (
+          <Badge variant="secondary" className="text-xs uppercase tracking-wide">
+            Respuesta guiada
+          </Badge>
+        )}
+        {hasTypeBadge && (
+          <Badge variant="outline" className="text-xs">
+            {message.metadata?.query_type}
+          </Badge>
+        )}
+      </div>
+    ) : null;
+
     // If message has data table, render it
     if (message.metadata?.data && Array.isArray(message.metadata.data) && message.metadata.data.length > 0) {
       const data = message.metadata.data;
@@ -311,6 +373,7 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
       return (
         <div className="space-y-3 max-w-full overflow-hidden">
           <div className="max-w-none break-words">
+            {badges}
             {parseMarkdown(message.content)}
           </div>
           
@@ -319,10 +382,19 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
               <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
                 {message.metadata.row_count} filas
               </span>
-              {message.metadata.query_type && (
-                <Badge variant="outline" className="text-xs">
-                  {message.metadata.query_type}
-                </Badge>
+              {(hasIntentBadge || hasTypeBadge) && (
+                <div className="flex items-center gap-2">
+                  {hasIntentBadge && (
+                    <Badge variant="secondary" className="text-xs uppercase tracking-wide">
+                      Respuesta guiada
+                    </Badge>
+                  )}
+                  {hasTypeBadge && (
+                    <Badge variant="outline" className="text-xs">
+                      {message.metadata?.query_type}
+                    </Badge>
+                  )}
+                </div>
               )}
             </div>
             
@@ -362,19 +434,11 @@ export function Chatbot({ onClose, defaultMinimized = false, className = '' }: C
 
     return (
       <div className="max-w-none break-words overflow-hidden text-sm">
+        {badges}
         {parseMarkdown(message.content)}
       </div>
     );
   };
-
-  const suggestedQuestions = [
-    "¿Cuántas cabinas están operativas?",
-    "Muéstrame las últimas 10 mediciones del sensor 1",
-    "¿Cuál es el valor promedio de RMS de las últimas 24 horas?",
-    "¿Cuántas cabinas están en estado de alerta?",
-    "Genera un reporte de salud del sistema",
-    "¿Qué hace UrbanFlow?"
-  ];
 
   const handleSuggestedQuestion = (question: string) => {
     setInput(question);

@@ -173,6 +173,7 @@ export default function App() {
         <Chatbot 
           onClose={() => setShowChatbot(false)}
           defaultMinimized={false}
+          userRole={authState.user?.rol}
         />
       )}
 

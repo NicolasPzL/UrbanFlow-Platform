@@ -195,6 +195,20 @@ async function proxyToAnalytics(req, res, upstreamPath) {
 
     // Construir opciones de fetch
     const headers = { 'Content-Type': 'application/json' };
+    if (req.user) {
+      const primaryRole = (req.user.rol || req.user.role || '').toString().toLowerCase();
+      const extraRoles = Array.isArray(req.user.roles) ? req.user.roles.map((r) => r.toString().toLowerCase()) : [];
+      const uniqueRoles = Array.from(new Set([primaryRole, ...extraRoles].filter(Boolean)));
+      if (primaryRole) {
+        headers['x-user-role'] = primaryRole;
+      }
+      if (uniqueRoles.length > 0) {
+        headers['x-user-roles'] = uniqueRoles.join(',');
+      }
+      if (req.user.id) {
+        headers['x-user-id'] = String(req.user.id);
+      }
+    }
     // Reenviar querystring
     const qs = new URLSearchParams(req.query || {}).toString();
     const target = qs ? `${url}?${qs}` : url;

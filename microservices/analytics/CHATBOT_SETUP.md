@@ -31,6 +31,9 @@ MODEL_NAME=llama3
 CHATBOT_MAX_CONTEXT_MESSAGES=10
 CHATBOT_SQL_ROW_LIMIT=100
 CHATBOT_ENABLE_ML_ANALYSIS=true
+CHATBOT_INTENT_THRESHOLD=0.82
+CHATBOT_INTENT_CACHE_SIZE=128
+CHATBOT_INTENT_EMBED_MODEL=nomic-embed-text
 ```
 
 ### 3. Instala Ollama (si aún no lo tienes)
@@ -88,6 +91,8 @@ npm install  # if not already done
 npm run dev
 ```
 
+> Nota: el middleware de Express reenvía el rol autenticado (`X-User-Role`) al microservicio. Para probar la segmentación por rol, asegúrate de iniciar sesión mediante la aplicación web principal.
+
 ### 6. Test the Chatbot
 
 1. Open http://localhost:5173 (or your frontend URL)
@@ -95,6 +100,8 @@ npm run dev
 3. Look for the chatbot icon in the bottom-right corner
 4. Click to open the chatbot
 5. Try a sample question: "How many cabins are in the system?"
+6. Cambia a un usuario con rol `cliente` para validar las respuestas públicas (estado del servicio, recomendaciones)
+7. Cambia a un usuario `operador`/`admin` para comprobar consultas técnicas y reportes
 
 ## Testing Without LLM (Limited Mode)
 
@@ -148,6 +155,7 @@ pip install langchain langchain-community
 - [ ] Frontend running
 - [ ] Chatbot visible in Dashboard
 - [ ] Sample query works
+- [ ] Role-based responses verified (ciudadano vs staff)
 
 ## Next Steps
 
@@ -158,6 +166,7 @@ Once the chatbot is working:
 3. Explore conversation context by asking follow-up questions
 4. Customize prompts in `app/core/prompts.py`
 5. Add domain-specific knowledge to schema_info.py
+6. Ejecuta `python test_chatbot.py` para validar políticas y router de intents
 
 ## Support
 

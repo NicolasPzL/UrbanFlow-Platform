@@ -80,6 +80,9 @@ class Settings(BaseModel):
     CHATBOT_MAX_CONTEXT_MESSAGES: int = int(os.getenv("CHATBOT_MAX_CONTEXT_MESSAGES", "10"))
     CHATBOT_SQL_ROW_LIMIT: int = int(os.getenv("CHATBOT_SQL_ROW_LIMIT", "100"))
     CHATBOT_ENABLE_ML_ANALYSIS: bool = os.getenv("CHATBOT_ENABLE_ML_ANALYSIS", "true").lower() == "true"
+    CHATBOT_INTENT_THRESHOLD: float = float(os.getenv("CHATBOT_INTENT_THRESHOLD", "0.82"))
+    CHATBOT_INTENT_CACHE_SIZE: int = int(os.getenv("CHATBOT_INTENT_CACHE_SIZE", "128"))
+    CHATBOT_INTENT_EMBED_MODEL: str = os.getenv("CHATBOT_INTENT_EMBED_MODEL", "nomic-embed-text")
 
     # Simulator
     ENABLE_SIMULATOR: bool = _ENABLE_SIMULATOR_ENV.lower() == "true"

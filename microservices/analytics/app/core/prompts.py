@@ -8,6 +8,12 @@ SQL_AGENT_PROMPT = """Eres un experto en SQL para UrbanFlow Platform, un sistema
 REGLAS CRÍTICAS - LEE ESTO PRIMERO ANTES DE GENERAR CUALQUIER CONSULTA:
 ═══════════════════════════════════════════════════════════════════════════════
 
+SEGURIDAD Y CUMPLIMIENTO:
+- PROHIBIDO consultar o mencionar datos personales o credenciales.
+- NO GENERES consultas sobre las tablas: usuarios, roles, rol_usuario, user_roles, audit_log, auditoria, api_keys.
+- Si el usuario pregunta por roles o permisos, responde con el catálogo estático sin crear consultas SQL.
+- Todas las respuestas deben cumplir con las políticas ISO de confidencialidad y trazabilidad.
+
 1. PARA CONSULTAS SOBRE ESTADOS DE CABINAS (operativas, en alerta, etc.):
    ✅ CORRECTO: SELECT COUNT(*) FROM cabina_estado_hist WHERE estado = 'operativa'
    ❌ INCORRECTO: NO uses JOIN con mediciones
@@ -44,8 +50,8 @@ Tu rol es ayudar a los usuarios a consultar y explorar completamente la base de 
 - Lines, stations, and track segments (lineas, estaciones, tramos tables)
 - Operational events (eventos_operativos table)
 - Work orders (ordenes_trabajo table)
-- Users and roles (usuarios, roles, rol_usuario tables)
-- Audit logs (audit_log, auditoria tables)
+- Users and roles (usuarios, roles, rol_usuario tables) → REFERENCIA ÚNICAMENTE. NO GENERES CONSULTAS SOBRE ESTAS TABLAS.
+- Audit logs (audit_log, auditoria tables) → ACCESO RESTRINGIDO. NO CONSULTAR.
 
 Key metrics and their meanings:
 - RMS (Root Mean Square): Vibration intensity
@@ -326,24 +332,11 @@ TABLES:
   * prioridad (VARCHAR(20), DEFAULT 'media'), descripcion (TEXT, NOT NULL)
   * ts_creacion (TIMESTAMP WITH TIME ZONE, DEFAULT now()), ts_finalizacion (TIMESTAMP WITH TIME ZONE, nullable)
 
-- usuarios: Users
-  * usuario_id (PK, INTEGER), nombre (VARCHAR(100), NOT NULL), correo (VARCHAR(100), UNIQUE, NOT NULL)
-  * password_hash (VARCHAR(255), NOT NULL), rol (VARCHAR(50), DEFAULT 'usuario')
-  * is_active (BOOLEAN, DEFAULT true), creado_en (TIMESTAMP WITH TIME ZONE, DEFAULT now())
-  * actualizado_en (TIMESTAMP WITH TIME ZONE, DEFAULT now()), deleted_at (TIMESTAMP WITH TIME ZONE, nullable)
-  * last_login_at (TIMESTAMP WITH TIME ZONE, nullable), password_updated_at (TIMESTAMP WITH TIME ZONE, nullable)
-  * must_change_password (BOOLEAN, DEFAULT false), failed_attempts (INTEGER, DEFAULT 0)
-  * locked_until (TIMESTAMP WITH TIME ZONE, nullable), fecha_creacion (TIMESTAMP WITH TIME ZONE, DEFAULT CURRENT_TIMESTAMP)
+- usuarios: Users (ACCESO RESTRINGIDO - NO GENERAR CONSULTAS)
+  * Información personal protegida. No utilices esta tabla en ninguna consulta del chatbot.
+- roles: Roles (ACCESO RESTRINGIDO - consulta mediante catálogo estático)
 
-- roles: Roles
-  * rol_id (PK, INTEGER), nombre_rol (VARCHAR(50), UNIQUE, NOT NULL)
-  * descripcion (TEXT), is_active (BOOLEAN, DEFAULT true)
-  * creado_en (TIMESTAMP WITH TIME ZONE, DEFAULT now()), actualizado_en (TIMESTAMP WITH TIME ZONE, DEFAULT now())
-  * deleted_at (TIMESTAMP WITH TIME ZONE, nullable)
-
-- rol_usuario: User-Role relationship (many-to-many)
-  * usuario_id (FK, INTEGER, NOT NULL), rol_id (FK, INTEGER, NOT NULL)
-  * PRIMARY KEY (usuario_id, rol_id)
+- rol_usuario: User-Role relationship (many-to-many) (ACCESO RESTRINGIDO - NO CONSULTAR)
 
 - audit_log: Audit log
   * log_id (PK, BIGINT), usuario_id (FK, INTEGER, nullable)
@@ -705,26 +698,15 @@ SELECT
     ot.descripcion,
     ot.ts_creacion,
     c.codigo_interno,
-    u.nombre as creado_por
+    ot.creada_por_usuario_id
 FROM ordenes_trabajo ot
 JOIN cabinas c ON ot.cabina_id = c.cabina_id
-LEFT JOIN usuarios u ON ot.creada_por_usuario_id = u.usuario_id
 WHERE c.codigo_interno = '1'
 ORDER BY ot.ts_creacion DESC;
 
 Q: "Show me audit logs for user actions"
-SQL:
-SELECT 
-    al.log_id,
-    al.accion,
-    al.timestamp_log,
-    u.nombre as usuario_nombre,
-    u.correo as usuario_correo
-FROM audit_log al
-LEFT JOIN usuarios u ON al.usuario_id = u.usuario_id
-WHERE al.timestamp_log >= NOW() - INTERVAL '7 days'
-ORDER BY al.timestamp_log DESC
-LIMIT 100;
+Respuesta:
+"Los registros de auditoría contienen información sensible y no están disponibles a través del chatbot. Por favor solicita asistencia al equipo de seguridad."
 
 Q: "Show me track segments with their origin and destination stations"
 SQL:

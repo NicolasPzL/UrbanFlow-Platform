@@ -1,0 +1,112 @@
+[
+  {
+    "id": "service_status",
+    "audience": "citizen",
+    "category": "informational",
+    "primary_question": "¿Cuál es el estado actual del servicio del teleférico?",
+    "patterns": [
+      "¿el teleférico está funcionando?",
+      "estado del servicio",
+      "situación del servicio de teleférico"
+    ],
+    "response_type": "static",
+    "answer": "El teleférico opera con monitoreo continuo. Si hubiera alertas oficiales o suspensiones, se comunicarán de inmediato a través de los canales ciudadanos."
+  },
+  {
+    "id": "roles_overview",
+    "audience": "any",
+    "category": "informational",
+    "primary_question": "¿Qué roles existen en UrbanFlow?",
+    "patterns": [
+      "roles disponibles",
+      "perfiles de usuario",
+      "quién puede usar el sistema"
+    ],
+    "response_type": "role_catalog"
+  },
+  {
+    "id": "citizen_guidelines",
+    "audience": "citizen",
+    "category": "informational",
+    "primary_question": "¿Qué recomendaciones de seguridad debo seguir como pasajero?",
+    "patterns": [
+      "recomendaciones de uso",
+      "consejos para el ciudadano",
+      "medidas de seguridad para pasajeros"
+    ],
+    "response_type": "static",
+    "answer": "Sigue las indicaciones del personal, revisa los avisos oficiales antes de viajar y mantente en áreas autorizadas. Ante cualquier incidencia contacta al centro de atención."
+  },
+  {
+    "id": "operational_cabins_citizen",
+    "audience": "citizen",
+    "category": "data",
+    "primary_question": "¿Cuántas cabinas están disponibles para pasajeros?",
+    "patterns": [
+      "cabinas disponibles",
+      "cabinas operativas para pasajeros",
+      "cabinas activas para ciudadanos"
+    ],
+    "response_type": "sql",
+    "sql": "SELECT COUNT(*) AS total_operativas FROM cabina_estado_hist WHERE estado = 'operativa';",
+    "answer_template": "Actualmente hay {total_operativas} cabinas disponibles para los pasajeros.",
+    "query_type": "data_query"
+  },
+  {
+    "id": "operational_cabins_staff",
+    "audience": "staff",
+    "category": "data",
+    "primary_question": "¿Cuántas cabinas están operativas?",
+    "patterns": [
+      "cabinas operativas",
+      "total cabinas en operación",
+      "cabinas activas"
+    ],
+    "response_type": "sql",
+    "sql": "SELECT COUNT(*) AS total_operativas FROM cabina_estado_hist WHERE estado = 'operativa';",
+    "answer_template": "Se registran {total_operativas} cabinas operativas en el sistema.",
+    "query_type": "data_query"
+  },
+  {
+    "id": "alert_cabins_staff",
+    "audience": "staff",
+    "category": "data",
+    "primary_question": "¿Cuántas cabinas están en alerta?",
+    "patterns": [
+      "cabinas en alerta",
+      "alert status cabins",
+      "cabinas críticas"
+    ],
+    "response_type": "sql",
+    "sql": "SELECT COUNT(*) AS total_alertas FROM cabina_estado_hist WHERE estado = 'alerta';",
+    "answer_template": "Hay {total_alertas} cabinas en estado de alerta que requieren seguimiento.",
+    "query_type": "data_query"
+  },
+  {
+    "id": "system_health_staff",
+    "audience": "staff",
+    "category": "informational",
+    "primary_question": "Resume la salud del sistema",
+    "patterns": [
+      "resumen de salud",
+      "estado del sistema",
+      "health overview"
+    ],
+    "response_type": "static",
+    "answer": "Consulta el panel de salud para revisar tendencias, alertas y métricas avanzadas. El chatbot puede ayudarte a obtener resúmenes agregados bajo demanda."
+  },
+  {
+    "id": "contact_support",
+    "audience": "any",
+    "category": "informational",
+    "primary_question": "¿Cómo contacto soporte?",
+    "patterns": [
+      "contactar soporte",
+      "ayuda",
+      "necesito asistencia"
+    ],
+    "response_type": "static",
+    "answer": "Puedes contactar al centro de soporte 24/7 en soporte@urbanflow.example o vía la línea oficial. El personal interno cuenta además con el canal on-call."
+  }
+]
+

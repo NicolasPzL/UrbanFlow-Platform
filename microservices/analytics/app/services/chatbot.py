@@ -22,6 +22,9 @@ from ..core.prompts import (
 from ..db.schema_info import format_schema_for_llm
 from .ml import MLPredictionService
 from .analytics import AnalyticsService
+from .access_control import AccessControl
+from .intent_router import IntentRouter, IntentMatch
+from ..core import role_catalog
 
 
 class ChatbotService:
@@ -35,12 +38,18 @@ class ChatbotService:
         db: Session,
         llm_provider: str = "ollama",
         model_name: str = "llama3",
-        enable_ml_analysis: bool = True
+        enable_ml_analysis: bool = True,
+        user_role: Optional[str] = None,
+        extra_roles: Optional[List[str]] = None
     ):
         self.db = db
         self.llm_provider = llm_provider
         self.model_name = model_name
         self.enable_ml_analysis = enable_ml_analysis
+        self.access_control = AccessControl(user_role, extra_roles)
+        self.user_role = self.access_control.role
+        self.role_info = self.access_control.role_info
+        self.intent_router = IntentRouter(self.role_info)
         
         # Initialize services
         self.query_builder = QueryBuilder(db)
@@ -101,8 +110,31 @@ class ChatbotService:
         print(f"[CHATBOT] Pregunta del usuario: {question}")
         print(f"[CHATBOT] Incluir análisis ML: {include_ml_analysis}")
         print(f"[CHATBOT] Contexto disponible: {context is not None}")
+        print(f"[CHATBOT] Rol del usuario: {self.user_role}")
         
         try:
+            # Verificar políticas por rol antes de cualquier otro procesamiento
+            is_allowed_question, deny_message = self.access_control.check_question(question)
+            if not is_allowed_question:
+                print(f"[CHATBOT] Bloqueado por política de acceso: {deny_message}")
+                return self._deny_access(deny_message, "policy_block")
+
+            if self.role_info and self.role_info.name == "ciudadano":
+                include_ml_analysis = False
+                print("[CHATBOT] Deshabilitando análisis ML para perfil ciudadano")
+
+            intent_match = self.intent_router.match(question)
+            if intent_match:
+                print(
+                    f"[CHATBOT] Pregunta resuelta vía intent router "
+                    f"(intent_id={intent_match.entry.id}, score={intent_match.confidence:.3f})"
+                )
+                return self._handle_intent_result(intent_match, context)
+
+            if self.access_control.should_use_role_catalog(question):
+                print("[CHATBOT] Pregunta sobre roles detectada - usando catálogo estático")
+                return self._handle_role_question(question)
+
             # Verificar seguridad ANTES de procesar
             print("\n[CHATBOT] Paso 0: Verificando seguridad de la consulta...")
             is_dangerous, danger_message = self._detect_dangerous_operations(question)
@@ -240,6 +272,11 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         
         print(f"[CHATBOT] Consulta SQL generada:")
         print(f"[CHATBOT] {sql_query}")
+
+        is_allowed_sql, deny_message = self.access_control.check_sql(sql_query)
+        if not is_allowed_sql:
+            print(f"[CHATBOT] Bloqueado por política de SQL: {deny_message}")
+            return self._deny_access(deny_message, "policy_block")
         
         # Validar que la consulta generada es realmente SQL
         sql_query_upper = sql_query.upper().strip()
@@ -323,6 +360,135 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         
         return response_data
     
+    def _handle_role_question(
+        self,
+        question: str,
+        context: Optional[ConversationContext] = None
+    ) -> Dict[str, Any]:
+        """Responde preguntas sobre roles usando el catálogo estático."""
+
+        roles = role_catalog.list_roles()
+        is_citizen = self.role_info and self.role_info.name == "ciudadano"
+
+        lines = [
+            "Estos son los roles oficiales definidos en UrbanFlow Platform:",
+            ""
+        ]
+
+        for role in roles:
+            if is_citizen and role.sensitive_access:
+                lines.append(
+                    f"• {role.name.title()}: Perfil interno del personal autorizado. "
+                    "Gestiona aspectos técnicos y está restringido al equipo operativo."
+                )
+                continue
+
+            lines.append(
+                f"• {role.name.title()}: {role.description} "
+                f"(Público objetivo: {role.audience})."
+            )
+
+        if is_citizen:
+            lines.append("")
+            lines.append(
+                "Como ciudadano puedes acceder a información pública del servicio y "
+                "recibir recomendaciones de uso. Cualquier información técnica o "
+                "operativa detallada es gestionada por el personal autorizado."
+            )
+
+        response_text = "\n".join(lines)
+        return {
+            "success": True,
+            "response": response_text,
+            "query_type": "role_info"
+        }
+
+    def _handle_intent_result(
+        self,
+        intent_match: IntentMatch,
+        context: Optional[ConversationContext]
+    ) -> Dict[str, Any]:
+        """Gestiona respuestas provenientes del intent router."""
+
+        entry = intent_match.entry
+        response_type = entry.response_type.lower()
+
+        if response_type == "static":
+            response_text = entry.answer or "La información solicitada está disponible en la documentación oficial."
+            return {
+                "success": True,
+                "response": response_text,
+                "query_type": entry.query_type,
+                "intent_id": entry.id,
+                "intent_confidence": intent_match.confidence,
+            }
+
+        if response_type == "role_catalog":
+            return self._handle_role_question(entry.primary_question, context)
+
+        if response_type == "sql":
+            if not entry.sql:
+                return self._deny_access(
+                    "La consulta pre-configurada no está disponible en este momento.",
+                    "config_error"
+                )
+
+            is_allowed_sql, deny_message = self.access_control.check_sql(entry.sql)
+            if not is_allowed_sql:
+                print(f"[CHATBOT] Intent router SQL bloqueado: {deny_message}")
+                return self._deny_access(deny_message, "policy_block")
+
+            results = self.query_builder.execute_query(entry.sql)
+            if not results.get("success"):
+                return {
+                    "success": False,
+                    "response": "No fue posible obtener la información solicitada en este momento. Inténtalo más tarde.",
+                    "query_type": entry.query_type,
+                    "intent_id": entry.id,
+                    "intent_confidence": intent_match.confidence,
+                }
+
+            response_text: Optional[str] = None
+            if entry.answer_template and results.get("data"):
+                try:
+                    context_row = dict(results["data"][0])
+                    context_row["row_count"] = results.get("row_count", 0)
+                    response_text = entry.answer_template.format(**context_row)
+                except Exception:
+                    response_text = self.query_builder.format_results_as_text(results)
+            else:
+                response_text = self.query_builder.format_results_as_text(results)
+
+            return {
+                "success": True,
+                "response": response_text,
+                "query_type": entry.query_type,
+                "intent_id": entry.id,
+                "intent_confidence": intent_match.confidence,
+                "data": results.get("data", []),
+                "row_count": results.get("row_count", 0),
+                "columns": results.get("columns", []),
+            }
+
+        # Desconocido: responder de forma amistosa
+        return {
+            "success": True,
+            "response": entry.answer or "Puedo ayudarte con preguntas generales sobre el sistema o el servicio.",
+            "query_type": entry.query_type,
+            "intent_id": entry.id,
+            "intent_confidence": intent_match.confidence,
+        }
+
+    def _deny_access(self, message: str, code: str) -> Dict[str, Any]:
+        """Construye una respuesta uniforme cuando se bloquea por políticas."""
+
+        return {
+            "success": False,
+            "response": message,
+            "query_type": code,
+            "error": "policy_violation"
+        }
+    
     def _handle_prediction_query(
         self,
         question: str,
@@ -378,6 +544,11 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         sql_query = self._generate_sql_query(question, query_context, context)
         
         if sql_query:
+            is_allowed_sql, deny_message = self.access_control.check_sql(sql_query)
+            if not is_allowed_sql:
+                print(f"[CHATBOT] Bloqueado por política durante análisis: {deny_message}")
+                return self._deny_access(deny_message, "policy_block")
+
             results = self.query_builder.execute_query(sql_query)
             if results["success"] and results["row_count"] > 0:
                 # Use LLM to analyze the data
@@ -862,27 +1033,52 @@ Genera un reporte completo que aborde la solicitud del usuario."""
     
     def get_capabilities(self) -> Dict[str, Any]:
         """Return information about chatbot capabilities"""
+        if self.role_info and self.role_info.name == "ciudadano":
+            return {
+                "role": self.role_info.name,
+                "capabilities": [
+                    "Consultar el estado general del servicio de teleférico",
+                    "Recibir avisos públicos y recomendaciones de uso",
+                    "Conocer los roles oficiales y su propósito",
+                ],
+                "supported_queries": [
+                    "¿El servicio del teleférico está operando con normalidad?",
+                    "¿Cuántas cabinas están disponibles para pasajeros?",
+                    "¿Qué roles existen en UrbanFlow y qué hace cada uno?",
+                    "¿Qué recomendaciones de seguridad debo seguir?",
+                ],
+                "restrictions": (
+                    "No se exponen datos personales ni información técnica avanzada. "
+                    "Para detalles operativos se requiere un rol autorizado."
+                ),
+                "llm_provider": self.llm_provider,
+                "model_name": self.model_name,
+                "ml_analysis_enabled": False,
+            }
+
         return {
+            "role": self.role_info.name if self.role_info else self.user_role,
             "capabilities": [
-                "Query real-time and historical sensor data",
-                "Analyze system health and performance",
-                "Generate predictive maintenance insights",
-                "Create comprehensive reports",
-                "Answer questions about cable car operations",
-                "Identify trends and anomalies"
+                "Consultar datos históricos y en tiempo real de sensores",
+                "Analizar salud del sistema y rendimiento operativo",
+                "Generar insights predictivos y reportes técnicos",
+                "Responder preguntas sobre operación y mantenimiento",
+                "Identificar tendencias, anomalías y cabinas en riesgo",
             ],
             "supported_queries": [
-                "How many cabins are in alert status?",
-                "Show me recent measurements from sensor 1",
-                "What's the average RMS value today?",
-                "Which sensors have high vibration levels?",
-                "Generate a system health report",
-                "Predict which cabins need maintenance",
-                "Compare performance this week vs last week"
+                "¿Cuántas cabinas están en alerta actualmente?",
+                "Muéstrame las últimas mediciones del sensor 1",
+                "Promedio de RMS de las últimas 24 horas",
+                "Genera un reporte de salud del sistema",
+                "¿Qué cabinas necesitan mantenimiento preventivo?",
             ],
+            "restrictions": (
+                "El chatbot no accede a datos personales ni a la tabla de usuarios. "
+                "Toda consulta se valida contra políticas de seguridad."
+            ),
             "llm_provider": self.llm_provider,
             "model_name": self.model_name,
-            "ml_analysis_enabled": self.enable_ml_analysis
+            "ml_analysis_enabled": self.enable_ml_analysis,
         }
 
 
