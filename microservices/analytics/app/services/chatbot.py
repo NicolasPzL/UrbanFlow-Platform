@@ -95,14 +95,51 @@ class ChatbotService:
         Returns:
             Dictionary with response, data, query_type, etc.
         """
+        print("\n" + "="*80)
+        print("[CHATBOT] Iniciando procesamiento de consulta")
+        print("="*80)
+        print(f"[CHATBOT] Pregunta del usuario: {question}")
+        print(f"[CHATBOT] Incluir análisis ML: {include_ml_analysis}")
+        print(f"[CHATBOT] Contexto disponible: {context is not None}")
+        
         try:
-            # Build context from question
-            query_context = self.query_builder.build_context_dict(question)
+            # Verificar seguridad ANTES de procesar
+            print("\n[CHATBOT] Paso 0: Verificando seguridad de la consulta...")
+            is_dangerous, danger_message = self._detect_dangerous_operations(question)
+            if is_dangerous:
+                print(f"[CHATBOT] ⚠️  ALERTA DE SEGURIDAD: {danger_message}")
+                print("[CHATBOT] Bloqueando consulta - Operación no permitida")
+                return {
+                    "success": False,
+                    "response": "Lo siento, no puedo ejecutar operaciones de eliminación, modificación o creación de datos. Solo puedo ayudarte con consultas de lectura (SELECT) para analizar información existente.\n\nPuedo ayudarte con:\n• Consultar información existente\n• Ver estadísticas y promedios\n• Analizar datos históricos\n• Generar reportes",
+                    "query_type": "security_block",
+                    "error": danger_message
+                }
+            print("[CHATBOT] Consulta segura ✓")
             
-            # Determine query type
+            # Build context from question
+            print("\n[CHATBOT] Paso 1: Analizando contexto de la pregunta...")
+            query_context = self.query_builder.build_context_dict(question)
+            print(f"[CHATBOT] Contexto extraído: {query_context}")
+            
+            # Determine query type - mejorar detección de preguntas informacionales
             query_type = query_context["query_type"]
             
+            # Verificación adicional para preguntas informacionales
+            question_lower = question.lower()
+            informational_patterns = [
+                'que hace', 'que es', 'que hace urbanflow', 'que es urbanflow',
+                'what does', 'what is', 'what does urbanflow', 'what is urbanflow',
+                'como funciona', 'how does', 'explain', 'describe', 'help'
+            ]
+            if any(pattern in question_lower for pattern in informational_patterns):
+                query_type = 'informational'
+                print(f"[CHATBOT] Pregunta informacional detectada por patrón adicional")
+            
+            print(f"\n[CHATBOT] Paso 2: Tipo de consulta identificado: {query_type}")
+            
             # Route to appropriate handler
+            print(f"\n[CHATBOT] Paso 3: Enrutando a handler específico...")
             if query_type == "informational":
                 return self._handle_informational_query(question, query_context, context)
             elif query_type == "prediction":
@@ -115,7 +152,9 @@ class ChatbotService:
                 return self._handle_data_query(question, query_context, context)
         
         except Exception as e:
-            print(f"Error processing query: {e}")  # Log para debugging
+            print(f"\n[CHATBOT] ERROR en procesamiento: {e}")
+            import traceback
+            print(f"[CHATBOT] Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
                 "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
@@ -185,37 +224,62 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         context: Optional[ConversationContext]
     ) -> Dict[str, Any]:
         """Handle direct data queries that can be answered with SQL"""
+        print("\n[CHATBOT] Handler: Consulta de datos (data_query)")
         
         # Generate SQL query using LLM
+        print("\n[CHATBOT] Paso 4: Generando consulta SQL con LLM...")
         sql_query = self._generate_sql_query(question, query_context, context)
         
         if not sql_query:
+            print("[CHATBOT] ERROR: No se pudo generar la consulta SQL")
             return {
                 "success": False,
                 "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
                 "query_type": "data_query"
             }
         
+        print(f"[CHATBOT] Consulta SQL generada:")
+        print(f"[CHATBOT] {sql_query}")
+        
+        # Validar que la consulta generada es realmente SQL
+        sql_query_upper = sql_query.upper().strip()
+        if not sql_query_upper.startswith('SELECT'):
+            print(f"[CHATBOT] ADVERTENCIA: El LLM no generó SQL válido, parece ser texto explicativo")
+            print(f"[CHATBOT] Redirigiendo a handler informacional...")
+            # Si no es SQL válido, tratar como pregunta informacional
+            return self._handle_informational_query(question, query_context, context)
+        
         # Execute query
+        print("\n[CHATBOT] Paso 5: Ejecutando consulta SQL en la base de datos...")
         results = self.query_builder.execute_query(sql_query)
+        
+        # Debug logging
+        print(f"[CHATBOT] Resultado de ejecución:")
+        print(f"[CHATBOT]   - Éxito: {results.get('success')}")
+        print(f"[CHATBOT]   - Filas encontradas: {results.get('row_count', 0)}")
+        print(f"[CHATBOT]   - Columnas: {results.get('columns', [])}")
+        if results.get("success") and results.get("data"):
+            print(f"[CHATBOT]   - Muestra primera fila: {str(results['data'][0])[:200] if results['data'] else 'No data'}")
         
         if not results["success"]:
             error_msg = results['error']
-            # Log el error para debugging pero no lo expongas al usuario
-            print(f"SQL execution error: {error_msg}")
-            print(f"Query that failed: {sql_query}")
+            print(f"\n[CHATBOT] ERROR en ejecución SQL:")
+            print(f"[CHATBOT]   - Mensaje: {error_msg}")
+            print(f"[CHATBOT]   - Consulta fallida: {sql_query}")
             
             # Log específico para errores conocidos para mejor debugging
             if "does not exist" in error_msg or "UndefinedColumn" in error_msg:
+                print("[CHATBOT] Hints para corregir el error:")
                 if "estado_actual" in error_msg and "cabina_estado_hist" in error_msg:
-                    print("Hint: cabina_estado_hist uses 'estado' column, not 'estado_actual'")
+                    print("[CHATBOT]   - cabina_estado_hist usa columna 'estado', no 'estado_actual'")
                 elif "medicion_id" in error_msg and "telemetria_cruda" in error_msg:
-                    print("Hint: telemetria_cruda does NOT have medicion_id. predicciones only relates to mediciones, not telemetria_cruda. Use 'mediciones' table if you need clase_predicha.")
+                    print("[CHATBOT]   - telemetria_cruda NO tiene medicion_id. predicciones solo se relaciona con mediciones")
                 elif "clase_predicha" in error_msg and ("telemetria_cruda" in error_msg or ("m." in error_msg and "telemetria_cruda" in sql_query.lower())):
-                    print("Hint: clase_predicha is only available through predicciones, which only relates to mediciones, NOT telemetria_cruda. Use 'mediciones' as main table if you need clase_predicha.")
+                    print("[CHATBOT]   - clase_predicha solo está disponible a través de predicciones, que solo se relaciona con mediciones")
                 elif "clase_predicha" in error_msg and ("mediciones" in error_msg or "m." in error_msg):
-                    print("Hint: clase_predicha is only in predicciones table, not mediciones. Need JOIN predicciones ON mediciones.medicion_id = predicciones.medicion_id")
+                    print("[CHATBOT]   - clase_predicha solo está en tabla predicciones, no en mediciones. Necesitas JOIN con predicciones")
             
+            print("\n[CHATBOT] Retornando respuesta de error al usuario")
             return {
                 "success": False,
                 "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
@@ -223,18 +287,41 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
                 # No incluir sql_query ni error en la respuesta
             }
         
-        # Format response using LLM
-        response_text = self._format_data_response(question, results)
+        # Format response using LLM (but don't wait if it takes too long)
+        print("\n[CHATBOT] Paso 6: Formateando respuesta con LLM...")
+        try:
+            response_text = self._format_data_response(question, results)
+            print(f"[CHATBOT] Respuesta formateada (primeros 200 chars): {response_text[:200]}...")
+        except Exception as e:
+            print(f"[CHATBOT] ERROR al formatear respuesta con LLM: {e}")
+            print("[CHATBOT] Usando formateo simple como fallback...")
+            # Fallback to simple formatting
+            response_text = self.query_builder.format_results_as_text(results)
         
-        return {
+        # Ensure data is properly serialized
+        print("\n[CHATBOT] Paso 7: Preparando respuesta final...")
+        response_data = {
             "success": True,
             "response": response_text,
             "query_type": "data_query",
-            # No incluir sql_query en la respuesta para no mostrarlo al usuario
-            "data": results["data"],
-            "row_count": results["row_count"],
-            "columns": results["columns"]
+            "data": results.get("data", []),
+            "row_count": results.get("row_count", 0),
+            "columns": results.get("columns", [])
         }
+        
+        # Debug: Log response structure
+        print(f"[CHATBOT] Respuesta preparada:")
+        print(f"[CHATBOT]   - Éxito: {response_data['success']}")
+        print(f"[CHATBOT]   - Filas: {response_data['row_count']}")
+        print(f"[CHATBOT]   - Columnas: {len(response_data['columns'])}")
+        if response_data["data"]:
+            print(f"[CHATBOT]   - Claves primera fila: {list(response_data['data'][0].keys())[:5]}")
+        
+        print("\n" + "="*80)
+        print("[CHATBOT] Procesamiento completado exitosamente")
+        print("="*80 + "\n")
+        
+        return response_data
     
     def _handle_prediction_query(
         self,
@@ -347,14 +434,25 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
     ) -> Optional[str]:
         """Generate SQL query from natural language using LLM"""
         
+        print(f"[CHATBOT] Generando consulta SQL...")
+        print(f"[CHATBOT]   - LLM disponible: {self.llm_client is not None}")
+        
         if not self.llm_client:
+            print("[CHATBOT] LLM no disponible, usando consultas sugeridas...")
             # Fallback: use suggested queries
             suggestions = self.query_builder.get_suggested_queries(query_context)
-            return suggestions[0] if suggestions else None
+            if suggestions:
+                print(f"[CHATBOT] Consulta sugerida: {suggestions[0]}")
+                return suggestions[0]
+            else:
+                print("[CHATBOT] No hay consultas sugeridas disponibles")
+                return None
         
         try:
             # Build prompt with schema and examples
+            print("[CHATBOT] Construyendo prompt para LLM...")
             schema_info = format_schema_for_llm(self.db)
+            print(f"[CHATBOT] Schema info obtenido ({len(schema_info)} caracteres)")
             
             prompt = f"""{SQL_AGENT_PROMPT}
 
@@ -362,17 +460,50 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
 
 {EXAMPLE_QUERIES}
 
-Pregunta del Usuario: {question}
+═══════════════════════════════════════════════════════════════════════════════
+PREGUNTA DEL USUARIO: {question}
+═══════════════════════════════════════════════════════════════════════════════
+
+IMPORTANTE: Si la pregunta es sobre "cuántas cabinas están operativas/en alerta":
+- USA SOLO: SELECT COUNT(*) FROM cabina_estado_hist WHERE estado = 'operativa' (o 'alerta')
+- NO uses JOIN con mediciones
+- NO uses m.estado_actual
+- NO agregues filtros de tiempo
+
+IMPORTANTE: Si la pregunta es sobre "últimas N mediciones" o "muéstrame mediciones":
+- USA SOLO: SELECT * FROM mediciones ORDER BY medicion_id DESC LIMIT N
+- NO uses JOIN con sensores ni cabinas
+- NO filtres por sensor_id (solo hay un sensor)
+- NO uses s.codigo_interno (sensores NO tiene codigo_interno)
+- NO uses m.cabina_id (mediciones NO tiene cabina_id, solo tiene sensor_id)
+- La relación correcta es: mediciones.sensor_id → sensores.sensor_id → sensores.cabina_id → cabinas.cabina_id
 
 Genera SOLO la consulta SQL (sin explicaciones). La consulta debe:
 1. Usar sintaxis PostgreSQL correcta
 2. Incluir JOINs apropiados si se necesitan múltiples tablas
-3. Filtrar por tiempo si es relevante (usar INTERVAL para filtros basados en tiempo)
-4. Limitar resultados apropiadamente
-5. Ser segura de ejecutar (solo SELECT)
+3. Filtrar por tiempo SOLO si el usuario explícitamente solicita "últimas X horas/días":
+   - Si pregunta "promedio de RMS" sin especificar tiempo: SELECT AVG(rms) FROM mediciones (SIN WHERE)
+   - Si pregunta "promedio de RMS de las últimas 24 horas": SELECT AVG(rms) FROM mediciones WHERE timestamp >= NOW() - INTERVAL '24 hours'
+   - CRÍTICO: NO agregues filtros de tiempo automáticamente si el usuario no los solicita
+4. Usar LIMIT solo cuando sea necesario:
+   - Si el usuario solicita "todos", "completo", "sin límite": NO uses LIMIT
+   - Para agregaciones (COUNT, SUM, AVG, etc.): NO uses LIMIT directamente con la función de agregación
+   - CRÍTICO: Para "promedio de las últimas N mediciones", usa SUBCONSULTA:
+     ✅ CORRECTO: SELECT AVG(columna) FROM (SELECT columna FROM tabla ORDER BY medicion_id DESC LIMIT N) AS subquery
+     ❌ INCORRECTO: SELECT AVG(columna) FROM tabla ORDER BY medicion_id DESC LIMIT N
+   - Para consultas exploratorias iniciales: LIMIT 100-1000 es razonable
+   - Para consultas específicas con WHERE: evalúa si LIMIT es necesario
+5. CRÍTICO - TIPOS DE DATOS: Usa los tipos correctos en comparaciones:
+   - codigo_interno es VARCHAR: usa comillas codigo_interno = '1' NO codigo_interno = 1
+   - estado_actual es VARCHAR: usa comillas estado_actual = 'operativo'
+   - sensor_id, cabina_id, medicion_id son INTEGER: NO uses comillas sensor_id = 1
+   - Valores numéricos (rms, kurtosis, etc.) son NUMERIC: NO uses comillas rms > 5.0
+6. Ser segura de ejecutar (solo SELECT)
+7. Si necesitas explorar la estructura, usa information_schema
 
 Consulta SQL:"""
             
+            print("[CHATBOT] Invocando LLM para generar consulta SQL...")
             from langchain_core.messages import HumanMessage, SystemMessage
             
             messages = [
@@ -381,46 +512,131 @@ Consulta SQL:"""
             ]
             
             response = self.llm_client.invoke(messages)
-            sql_query = response.content.strip()
+            sql_query_raw = response.content.strip()
+            print(f"[CHATBOT] Respuesta cruda del LLM ({len(sql_query_raw)} caracteres):")
+            print(f"[CHATBOT] {sql_query_raw[:300]}...")
             
             # Clean up response (remove markdown, explanations, etc.)
-            # Remove markdown code blocks
-            sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
+            sql_query = self._clean_sql_response(sql_query_raw)
             
-            # Extract SQL query if there's explanatory text before/after
-            # Look for SELECT statement (case insensitive)
-            select_match = re.search(r'SELECT\s+', sql_query, re.IGNORECASE)
-            if select_match:
-                # Extract from SELECT onwards
-                sql_query = sql_query[select_match.start():]
-                # Remove everything after the last semicolon or end of query
-                if ';' in sql_query:
-                    sql_query = sql_query[:sql_query.rindex(';') + 1]
-                else:
-                    # Remove any trailing text that's not SQL
-                    # Keep only up to the last valid SQL token
-                    lines = sql_query.split('\n')
-                    cleaned_lines = []
-                    for line in lines:
-                        line = line.strip()
-                        if line and not line.lower().startswith(('here', 'this', 'the', 'query', 'answer')):
-                            cleaned_lines.append(line)
-                    sql_query = ' '.join(cleaned_lines)
+            # Validar que la consulta generada sea segura (solo SELECT)
+            print(f"[CHATBOT] Validando tipo de consulta generada...")
+            is_valid_type, type_error = self._validate_query_type(sql_query)
+            if not is_valid_type:
+                print(f"[CHATBOT] ⚠️  ERROR: {type_error}")
+                print(f"[CHATBOT] Consulta bloqueada por seguridad")
+                return None
             
             sql_query = sql_query.strip()
+            print(f"[CHATBOT] Consulta SQL final generada ({len(sql_query)} caracteres)")
             
             return sql_query
         
         except Exception as e:
-            print(f"Error generating SQL query: {e}")
+            print(f"[CHATBOT] ERROR generando consulta SQL: {e}")
+            import traceback
+            print(f"[CHATBOT] Traceback: {traceback.format_exc()}")
             # Si hay un error de columna, intentar sugerir una corrección
             error_str = str(e)
             if "does not exist" in error_str or "UndefinedColumn" in error_str:
-                print(f"SQL Error detected: {error_str}")
+                print(f"[CHATBOT] Error de columna detectado: {error_str}")
                 # Intentar extraer la columna problemática y sugerir corrección
                 if "estado_actual" in error_str and "cabina_estado_hist" in error_str:
-                    print("Hint: cabina_estado_hist uses 'estado' column, not 'estado_actual'")
+                    print("[CHATBOT] Hint: cabina_estado_hist usa columna 'estado', no 'estado_actual'")
             return None
+    
+    def _detect_dangerous_operations(self, question: str) -> tuple[bool, str]:
+        """
+        Detectar operaciones peligrosas antes de generar SQL.
+        Returns (is_dangerous, message)
+        """
+        question_lower = question.lower()
+        
+        dangerous_keywords = {
+            'elimina': 'eliminación',
+            'borra': 'eliminación',
+            'delete': 'eliminación',
+            'drop': 'eliminación de estructura',
+            'truncate': 'eliminación masiva',
+            'actualiza': 'modificación',
+            'update': 'modificación',
+            'modifica': 'modificación',
+            'inserta': 'inserción',
+            'insert': 'inserción',
+            'crea': 'creación',
+            'create': 'creación',
+            'alter': 'modificación de estructura',
+            'grant': 'permisos',
+            'revoke': 'permisos'
+        }
+        
+        for keyword, operation_type in dangerous_keywords.items():
+            if keyword in question_lower:
+                return True, f"Operación no permitida: {operation_type} (palabra clave: '{keyword}')"
+        
+        return False, "Consulta segura"
+    
+    def _clean_sql_response(self, llm_response: str) -> str:
+        """
+        Limpiar respuesta del LLM sin romper la consulta completa.
+        Busca cualquier operación SQL (SELECT, DELETE, etc.) y mantiene la consulta completa.
+        """
+        # Remover markdown primero
+        cleaned = llm_response.replace("```sql", "").replace("```", "").strip()
+        
+        # Buscar cualquier operación SQL (no solo SELECT)
+        sql_pattern = r'\b(SELECT|DELETE|UPDATE|INSERT|WITH|CREATE|ALTER|DROP|TRUNCATE)\b'
+        match = re.search(sql_pattern, cleaned, re.IGNORECASE)
+        
+        if match:
+            start_index = match.start()
+            sql_query = cleaned[start_index:]
+            
+            # Encontrar el final de la consulta (último punto y coma o fin de línea)
+            # Buscar el último punto y coma que no esté dentro de comillas o paréntesis
+            semicolon_pos = sql_query.rfind(';')
+            if semicolon_pos != -1:
+                sql_query = sql_query[:semicolon_pos + 1]
+            else:
+                # Si no hay punto y coma, buscar el final lógico
+                # Eliminar líneas que parezcan explicaciones
+                lines = sql_query.split('\n')
+                cleaned_lines = []
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.lower().startswith(('here', 'this', 'the', 'query', 'answer', 'esta', 'esta consulta')):
+                        cleaned_lines.append(line)
+                sql_query = ' '.join(cleaned_lines)
+            
+            print(f"[CHATBOT] Operación SQL encontrada: {match.group(1)} en posición {start_index}")
+            print(f"[CHATBOT] Limpiando respuesta (removiendo markdown y explicaciones)...")
+            return sql_query.strip()
+        
+        # Si no se encuentra operación SQL, devolver tal cual (será rechazada en validación)
+        print(f"[CHATBOT] ADVERTENCIA: No se encontró operación SQL en la respuesta del LLM")
+        return cleaned
+    
+    def _validate_query_type(self, sql_query: str) -> tuple[bool, str]:
+        """
+        Validar que la consulta generada sea del tipo esperado (solo SELECT).
+        Returns (is_valid, error_message)
+        """
+        if not sql_query or not sql_query.strip():
+            return False, "Consulta vacía generada"
+        
+        sql_upper = sql_query.upper().strip()
+        
+        # Bloquear operaciones peligrosas
+        dangerous_operations = ['DELETE', 'UPDATE', 'INSERT', 'DROP', 'ALTER', 'TRUNCATE', 'CREATE', 'GRANT', 'REVOKE']
+        for operation in dangerous_operations:
+            if sql_upper.startswith(operation):
+                return False, f"Operación no permitida: {operation}. Solo se permiten consultas SELECT."
+        
+        # Asegurar que sea SELECT
+        if not sql_upper.startswith('SELECT'):
+            return False, f"Se esperaba SELECT pero se generó: {sql_upper.split()[0] if sql_upper.split() else 'N/A'}"
+        
+        return True, "Consulta válida"
     
     def _format_data_response(self, question: str, results: Dict[str, Any]) -> str:
         """Format query results into a natural language response"""
@@ -434,6 +650,18 @@ Consulta SQL:"""
             
             # Contexto adicional para interpretar mejor los resultados
             interpretation_guidance = ""
+            
+            # Detectar si hay valores NULL en agregaciones (AVG, MAX, MIN, etc.)
+            if results.get("row_count") == 1 and results.get("data"):
+                first_row = results["data"][0]
+                has_null_aggregation = any(
+                    key.lower() in ['avg', 'max', 'min', 'sum', 'promedio', 'maximo', 'minimo', 'suma'] 
+                    and value is None 
+                    for key, value in first_row.items()
+                )
+                if has_null_aggregation:
+                    interpretation_guidance = "\nIMPORTANTE: El resultado contiene NULL, lo que significa que no hay datos disponibles para calcular esta agregación. Indica esto claramente al usuario."
+            
             if results.get("row_count") == 1 and results.get("data"):
                 # Si hay una sola fila con un COUNT u otra agregación, interpretarla correctamente
                 first_row = results["data"][0]
