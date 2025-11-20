@@ -25,10 +25,12 @@ class ChatbotQueryRequest(BaseModel):
     question: str
     session_id: Optional[str] = None
     include_ml_analysis: Optional[bool] = False
+    user_role: Optional[str] = "cliente"  # admin, analista, operador, cliente
 
 class ChatbotConversationRequest(BaseModel):
     question: str
     session_id: str
+    user_role: Optional[str] = "cliente"  # admin, analista, operador, cliente
 
 # =============================================================================
 # CHATBOT ENDPOINTS
@@ -71,7 +73,8 @@ def chatbot_query(request: ChatbotQueryRequest, db: Session = Depends(get_db)):
         result = chatbot.process_query(
             question=request.question,
             context=context,
-            include_ml_analysis=request.include_ml_analysis
+            include_ml_analysis=request.include_ml_analysis,
+            user_role=request.user_role or "cliente"
         )
         
         # Add response to context if session exists
@@ -129,7 +132,8 @@ def chatbot_conversation(request: ChatbotConversationRequest, db: Session = Depe
         result = chatbot.process_query(
             question=request.question,
             context=context,
-            include_ml_analysis=True
+            include_ml_analysis=True,
+            user_role=request.user_role or "cliente"
         )
         
         # Add response to context

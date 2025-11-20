@@ -15,10 +15,10 @@ def get_table_descriptions() -> Dict[str, str]:
         "telemetria_cruda": "Raw telemetry data from cable car sensors including position (lat/lon/alt), speed, acceleration, temperature, and 3-axis vibration measurements. CRITICAL: This table has telemetria_id (PK), NOT medicion_id. It cannot be directly joined with 'predicciones' table.",
         "mediciones": "Processed measurements with extracted features like RMS, kurtosis, skewness, zero-crossing rate, spectral frequencies, and operational state classification. This table has medicion_id (PK) and can be joined with 'predicciones' via medicion_id.",
         "sensores": "Sensor registry linking sensor IDs to cable car cabins (one sensor per cabin)",
-        "cabinas": "Cable car units with internal code and current operational state (operativo/inusual/alerta)",
+        "cabinas": "Cable car units with internal code and current operational state. CRITICAL: This table has 'estado_actual' column, NOT 'estado'. For querying cabin states, use 'cabina_estado_hist' table instead, which has 'estado' column.",
         "predicciones": "Machine learning prediction results. CRITICAL: Only relates to 'mediciones' table via medicion_id, NOT to 'telemetria_cruda'. Includes predicted class and probability distributions.",
         "modelos_ml": "Registry of ML models used for predictions, including version, framework, and training date",
-        "cabina_estado_hist": "Historical log of cable car state changes over time. Columns: hist_id, cabina_id, estado (NOT estado_actual), timestamp_inicio, timestamp_fin",
+        "cabina_estado_hist": "Historical log of cable car state changes over time. CRITICAL: This is the CORRECT table to query cabin states. Columns: hist_id, cabina_id, estado (NOT estado_actual), timestamp_inicio, timestamp_fin. For 'How many cabins are operational/in alert?', ALWAYS use: SELECT COUNT(*) FROM cabina_estado_hist WHERE estado = 'operativa' (or 'alerta', 'inusual'). NEVER use 'cabinas' table for state queries.",
         "lineas": "Cable car lines/routes with names and total length",
         "estaciones": "Stations along cable car lines with geographic coordinates",
         "tramos": "Track segments between stations with length and slope percentage"
@@ -74,7 +74,7 @@ def get_important_relationships() -> List[str]:
         "Each prediction is associated with a specific ML model via modelo_id",
         "To get cabin information from measurements, JOIN mediciones → sensores → cabinas",
         "To get predictions with measurements, JOIN mediciones → predicciones ON mediciones.medicion_id = predicciones.medicion_id",
-        "Historical state changes in 'cabina_estado_hist' track when cabins changed operational states"
+        "CRITICAL: Historical state changes in 'cabina_estado_hist' track when cabins changed operational states. For queries like 'How many cabins are operational/in alert?', ALWAYS use 'cabina_estado_hist' table with 'estado' column, NEVER use 'cabinas' table. The 'cabinas' table has 'estado_actual' but it's not reliable for queries - use 'cabina_estado_hist' instead."
     ]
 
 def get_table_metadata(db: Session) -> MetaData:
