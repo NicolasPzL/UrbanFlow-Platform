@@ -21,6 +21,77 @@ class QueryBuilder:
             'INSERT', 'UPDATE', 'GRANT', 'REVOKE'
         ]
     
+    def auto_correct_cabin_state_query(self, sql_query: str) -> str:
+        """
+        Corregir consultas que usan incorrectamente 'cabinas.estado' o 'cabinas WHERE estado'.
+        La tabla 'cabinas' NO tiene columna 'estado', solo tiene 'estado_actual'.
+        Para consultar estados de cabinas, se debe usar 'cabina_estado_hist.estado'.
+        """
+        # Patrón: SELECT ... FROM cabinas WHERE estado = ...
+        pattern = r'FROM\s+cabinas\s+WHERE\s+estado\s*='
+        
+        if re.search(pattern, sql_query, re.IGNORECASE):
+            print("[QUERY_BUILDER] [ERROR] Se está usando 'cabinas.estado' que NO EXISTE")
+            print("[QUERY_BUILDER]   - La tabla 'cabinas' NO tiene columna 'estado', solo tiene 'estado_actual'")
+            print("[QUERY_BUILDER]   - Para consultar estados de cabinas, se debe usar 'cabina_estado_hist.estado'")
+            print("[QUERY_BUILDER] Corrigiendo consulta automáticamente...")
+            
+            # Extraer el valor del estado (operativa, alerta, inusual, etc.)
+            estado_match = re.search(r'estado\s*=\s*[\'"]?(\w+)[\'"]?', sql_query, re.IGNORECASE)
+            estado_value = estado_match.group(1) if estado_match else 'operativa'
+            
+            # Reemplazar FROM cabinas WHERE estado = ... con FROM cabina_estado_hist WHERE estado = ...
+            corrected_query = re.sub(
+                r'FROM\s+cabinas\s+WHERE\s+estado\s*=',
+                f'FROM cabina_estado_hist WHERE estado =',
+                sql_query,
+                flags=re.IGNORECASE
+            )
+            
+            # Si hay SELECT COUNT(*), mantenerlo
+            # Si hay otros campos, ajustar según sea necesario
+            if 'SELECT COUNT(*)' in sql_query.upper() or 'SELECT COUNT' in sql_query.upper():
+                # Para COUNT, la corrección ya está hecha arriba
+                pass
+            else:
+                # Para otros SELECT, podría necesitar ajustes adicionales
+                # Por ahora, solo corregimos la tabla y columna
+                pass
+            
+            print(f"[QUERY_BUILDER] Consulta corregida: {corrected_query[:200]}...")
+            return corrected_query.strip()
+        
+        # Patrón: SELECT ... FROM cabinas WHERE c.estado = ... (con alias)
+        pattern2 = r'FROM\s+cabinas\s+(?:AS\s+)?\w*\s+WHERE\s+\w+\.estado\s*='
+        
+        if re.search(pattern2, sql_query, re.IGNORECASE):
+            print("[QUERY_BUILDER] [WARNING] ERROR DETECTADO: Se está usando alias de 'cabinas' con columna 'estado' que NO EXISTE")
+            print("[QUERY_BUILDER] Corrigiendo consulta automáticamente...")
+            
+            # Extraer el alias si existe
+            alias_match = re.search(r'FROM\s+cabinas\s+(?:AS\s+)?(\w+)', sql_query, re.IGNORECASE)
+            alias = alias_match.group(1) if alias_match else 'c'
+            
+            # Reemplazar con cabina_estado_hist
+            corrected_query = re.sub(
+                r'FROM\s+cabinas\s+(?:AS\s+)?\w+',
+                'FROM cabina_estado_hist AS ceh',
+                sql_query,
+                flags=re.IGNORECASE
+            )
+            # Reemplazar el alias.estado con ceh.estado
+            corrected_query = re.sub(
+                rf'{alias}\.estado',
+                'ceh.estado',
+                corrected_query,
+                flags=re.IGNORECASE
+            )
+            
+            print(f"[QUERY_BUILDER] Consulta corregida: {corrected_query[:200]}...")
+            return corrected_query.strip()
+        
+        return sql_query
+    
     def auto_correct_aggregation_query(self, sql_query: str) -> str:
         """
         Corregir consultas de agregación con límites incorrectos y filtros de tiempo innecesarios.
@@ -174,9 +245,13 @@ FROM (
         try:
             # Intentar corregir automáticamente consultas de agregación incorrectas
             print("[QUERY_BUILDER] Verificando si necesita corrección automática...")
+            # Auto-correct cabin state queries first (critical error)
+            sql_query = self.auto_correct_cabin_state_query(sql_query)
+            
+            # Auto-correct aggregation queries if needed
             sql_query_corrected = self.auto_correct_aggregation_query(sql_query)
             if sql_query_corrected != sql_query:
-                print("[QUERY_BUILDER] Consulta corregida automáticamente ✓")
+                print("[QUERY_BUILDER] Consulta corregida automáticamente [OK]")
                 sql_query = sql_query_corrected
             
             # Validate query
@@ -190,7 +265,7 @@ FROM (
                     "data": [],
                     "row_count": 0
                 }
-            print("[QUERY_BUILDER] Consulta válida ✓")
+            print("[QUERY_BUILDER] Consulta válida [OK]")
             
             # Add LIMIT if missing
             sql_query_before_limit = sql_query

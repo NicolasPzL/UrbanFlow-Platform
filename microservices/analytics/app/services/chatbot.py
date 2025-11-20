@@ -13,6 +13,7 @@ import re
 from .query_builder import QueryBuilder
 from .context_manager import ConversationContext
 from ..core.prompts import (
+    CHATBOT_MAIN_PROMPT,
     SQL_AGENT_PROMPT,
     ANALYSIS_PROMPT,
     REPORT_PROMPT,
@@ -70,7 +71,11 @@ class ChatbotService:
                     "Este servicio solo admite Ollama. Ajusta LLM_PROVIDER=ollama en tu configuración."
                 )
 
-            from langchain_community.chat_models import ChatOllama
+            try:
+                from langchain_ollama import ChatOllama
+            except ImportError:
+                # Fallback para versiones antiguas
+                from langchain_community.chat_models import ChatOllama
             base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
             print(f"Connecting to Ollama at: {base_url}")
             self.llm_client = ChatOllama(
@@ -91,7 +96,8 @@ class ChatbotService:
         self,
         question: str,
         context: Optional[ConversationContext] = None,
-        include_ml_analysis: bool = False
+        include_ml_analysis: bool = False,
+        user_role: str = "cliente"
     ) -> Dict[str, Any]:
         """
         Process a natural language question and return a structured response.
@@ -139,7 +145,7 @@ class ChatbotService:
             print("\n[CHATBOT] Paso 0: Verificando seguridad de la consulta...")
             is_dangerous, danger_message = self._detect_dangerous_operations(question)
             if is_dangerous:
-                print(f"[CHATBOT] ⚠️  ALERTA DE SEGURIDAD: {danger_message}")
+                print(f"[CHATBOT] [WARNING] ALERTA DE SEGURIDAD: {danger_message}")
                 print("[CHATBOT] Bloqueando consulta - Operación no permitida")
                 return {
                     "success": False,
@@ -147,41 +153,45 @@ class ChatbotService:
                     "query_type": "security_block",
                     "error": danger_message
                 }
-            print("[CHATBOT] Consulta segura ✓")
+            print("[CHATBOT] Consulta segura [OK]")
+            
+            # Verificar permisos por rol ANTES de procesar
+            print("\n[CHATBOT] Paso 1: Verificando permisos por rol...")
+            access_check = self._check_role_access(question, user_role)
+            if not access_check["allowed"]:
+                print(f"[CHATBOT] [WARNING] ACCESO DENEGADO: {access_check['message']}")
+                return {
+                    "success": False,
+                    "response": access_check["message"],
+                    "query_type": "access_denied",
+                    "user_role": user_role
+                }
+            print(f"[CHATBOT] Acceso permitido para rol: {user_role}")
             
             # Build context from question
-            print("\n[CHATBOT] Paso 1: Analizando contexto de la pregunta...")
+            print("\n[CHATBOT] Paso 2: Analizando contexto de la pregunta...")
             query_context = self.query_builder.build_context_dict(question)
             print(f"[CHATBOT] Contexto extraído: {query_context}")
             
-            # Determine query type - mejorar detección de preguntas informacionales
-            query_type = query_context["query_type"]
+            # Determine query type using improved detection
+            query_type = self._detect_query_type(question)
+            query_context["query_type"] = query_type  # Update context with detected type
             
-            # Verificación adicional para preguntas informacionales
-            question_lower = question.lower()
-            informational_patterns = [
-                'que hace', 'que es', 'que hace urbanflow', 'que es urbanflow',
-                'what does', 'what is', 'what does urbanflow', 'what is urbanflow',
-                'como funciona', 'how does', 'explain', 'describe', 'help'
-            ]
-            if any(pattern in question_lower for pattern in informational_patterns):
-                query_type = 'informational'
-                print(f"[CHATBOT] Pregunta informacional detectada por patrón adicional")
-            
-            print(f"\n[CHATBOT] Paso 2: Tipo de consulta identificado: {query_type}")
+            print(f"\n[CHATBOT] Paso 3: Tipo de consulta identificado: {query_type}")
             
             # Route to appropriate handler
-            print(f"\n[CHATBOT] Paso 3: Enrutando a handler específico...")
+            print(f"\n[CHATBOT] Paso 4: Enrutando a handler específico...")
             if query_type == "informational":
-                return self._handle_informational_query(question, query_context, context)
+                return self._handle_informational_query(question, query_context, context, user_role)
             elif query_type == "prediction":
-                return self._handle_prediction_query(question, query_context, context)
+                return self._handle_prediction_query(question, query_context, context, user_role)
             elif query_type == "analysis":
-                return self._handle_analysis_query(question, query_context, context)
+                return self._handle_analysis_query(question, query_context, context, user_role)
             elif query_type == "report":
-                return self._handle_report_query(question, query_context, context)
+                return self._handle_report_query(question, query_context, context, user_role)
             else:
-                return self._handle_data_query(question, query_context, context)
+                # 'data' o 'unknown' → tratar como data_query
+                return self._handle_data_query(question, query_context, context, user_role)
         
         except Exception as e:
             print(f"\n[CHATBOT] ERROR en procesamiento: {e}")
@@ -189,7 +199,7 @@ class ChatbotService:
             print(f"[CHATBOT] Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
-                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "response": "La información solicitada no está disponible en la base de datos ni en la documentación proporcionada.",
                 "error": str(e),
                 "query_type": "error"
             }
@@ -198,7 +208,8 @@ class ChatbotService:
         self,
         question: str,
         query_context: Dict[str, Any],
-        context: Optional[ConversationContext]
+        context: Optional[ConversationContext],
+        user_role: str = "cliente"
     ) -> Dict[str, Any]:
         """Handle informational questions about the system that don't require SQL"""
         
@@ -219,18 +230,20 @@ Puedo ayudarte a consultar datos, analizar tendencias, generar reportes y respon
             }
         
         try:
-            informational_prompt = f"""Eres un asistente para UrbanFlow Platform, un sistema de monitoreo y análisis de teleféricos.
+            informational_prompt = f"""{CHATBOT_MAIN_PROMPT.format(user_role=user_role)}
 
 El usuario preguntó: "{question}"
 
-Proporciona una respuesta clara e informativa sobre qué hace UrbanFlow Platform y sus capacidades.
-NO generes consultas SQL para preguntas informativas. Enfócate en explicar:
-- Qué es el sistema y qué hace
-- Características y capacidades clave
-- Cómo ayuda a monitorear las operaciones del teleférico
-- Qué tipo de datos e insights proporciona
+Esta es una pregunta TIPO B (documentada, no requiere SQL).
 
-Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en español."""
+IMPORTANTE:
+- Responde SOLO con información que esté en la documentación proporcionada.
+- Si la documentación no cubre el tema, di claramente:
+  "La información solicitada no está disponible en la base de datos ni en la documentación proporcionada."
+- NO inventes información.
+- NO uses conocimiento externo.
+- Sé breve, directo y preciso.
+- Responde SIEMPRE en español."""
 
             from langchain_core.messages import HumanMessage
             
@@ -253,24 +266,28 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         self,
         question: str,
         query_context: Dict[str, Any],
-        context: Optional[ConversationContext]
+        context: Optional[ConversationContext],
+        user_role: str = "cliente"
     ) -> Dict[str, Any]:
         """Handle direct data queries that can be answered with SQL"""
         print("\n[CHATBOT] Handler: Consulta de datos (data_query)")
         
         # Generate SQL query using LLM
-        print("\n[CHATBOT] Paso 4: Generando consulta SQL con LLM...")
-        sql_query = self._generate_sql_query(question, query_context, context)
+        print("\n[CHATBOT] Paso 5: Generando consulta SQL con LLM...")
+        sql_query = self._generate_sql_query(question, query_context, context, user_role)
         
         if not sql_query:
             print("[CHATBOT] ERROR: No se pudo generar la consulta SQL")
             return {
                 "success": False,
-                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "response": "No tengo suficiente información documentada o en la base de datos para responder eso con certeza.",
                 "query_type": "data_query"
             }
         
-        print(f"[CHATBOT] Consulta SQL generada:")
+        # Aplicar filtros por rol
+        sql_query = self._apply_role_filters_to_sql(sql_query, user_role)
+        
+        print(f"[CHATBOT] Consulta SQL generada (con filtros de rol):")
         print(f"[CHATBOT] {sql_query}")
 
         is_allowed_sql, deny_message = self.access_control.check_sql(sql_query)
@@ -284,7 +301,7 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
             print(f"[CHATBOT] ADVERTENCIA: El LLM no generó SQL válido, parece ser texto explicativo")
             print(f"[CHATBOT] Redirigiendo a handler informacional...")
             # Si no es SQL válido, tratar como pregunta informacional
-            return self._handle_informational_query(question, query_context, context)
+            return self._handle_informational_query(question, query_context, context, user_role)
         
         # Execute query
         print("\n[CHATBOT] Paso 5: Ejecutando consulta SQL en la base de datos...")
@@ -319,21 +336,33 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
             print("\n[CHATBOT] Retornando respuesta de error al usuario")
             return {
                 "success": False,
-                "response": "Lo siento, en este momento no tengo esa información disponible. Por favor, contacta con soporte técnico para que puedan ayudarte con tu consulta o actualizarme con esa información.",
+                "response": "La información solicitada no está disponible en la base de datos ni en la documentación proporcionada.",
                 "query_type": "data_query",
                 # No incluir sql_query ni error en la respuesta
             }
         
-        # Format response using LLM (but don't wait if it takes too long)
-        print("\n[CHATBOT] Paso 6: Formateando respuesta con LLM...")
-        try:
-            response_text = self._format_data_response(question, results)
-            print(f"[CHATBOT] Respuesta formateada (primeros 200 chars): {response_text[:200]}...")
-        except Exception as e:
-            print(f"[CHATBOT] ERROR al formatear respuesta con LLM: {e}")
-            print("[CHATBOT] Usando formateo simple como fallback...")
-            # Fallback to simple formatting
-            response_text = self.query_builder.format_results_as_text(results)
+        # Format response - optimización para respuestas numéricas simples
+        print("\n[CHATBOT] Paso 6: Formateando respuesta...")
+        
+        # OPTIMIZACIÓN: Si es una respuesta numérica simple (1 fila, 1 columna), no usar LLM
+        row_count = results.get("row_count", 0)
+        columns = results.get("columns", [])
+        
+        if row_count == 1 and len(columns) == 1 and results.get("data"):
+            print("[CHATBOT] Respuesta numérica simple detectada, formateando sin LLM...")
+            response_text = self._format_simple_numeric_response(question, results)
+            print(f"[CHATBOT] Respuesta formateada (sin LLM): {response_text}")
+        else:
+            # Para respuestas complejas, usar LLM
+            print("[CHATBOT] Respuesta compleja, usando LLM para formatear...")
+            try:
+                response_text = self._format_data_response(question, results)
+                print(f"[CHATBOT] Respuesta formateada (primeros 200 chars): {response_text[:200]}...")
+            except Exception as e:
+                print(f"[CHATBOT] ERROR al formatear respuesta con LLM: {e}")
+                print("[CHATBOT] Usando formateo simple como fallback...")
+                # Fallback to simple formatting
+                response_text = self.query_builder.format_results_as_text(results)
         
         # Ensure data is properly serialized
         print("\n[CHATBOT] Paso 7: Preparando respuesta final...")
@@ -493,7 +522,8 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         self,
         question: str,
         query_context: Dict[str, Any],
-        context: Optional[ConversationContext]
+        context: Optional[ConversationContext],
+        user_role: str = "cliente"
     ) -> Dict[str, Any]:
         """Handle prediction-related queries using ML models"""
         
@@ -536,7 +566,8 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         self,
         question: str,
         query_context: Dict[str, Any],
-        context: Optional[ConversationContext]
+        context: Optional[ConversationContext],
+        user_role: str = "cliente"
     ) -> Dict[str, Any]:
         """Handle analytical queries that require interpretation"""
         
@@ -576,7 +607,8 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         self,
         question: str,
         query_context: Dict[str, Any],
-        context: Optional[ConversationContext]
+        context: Optional[ConversationContext],
+        user_role: str = "cliente"
     ) -> Dict[str, Any]:
         """Handle report generation requests"""
         
@@ -601,7 +633,8 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
         self,
         question: str,
         query_context: Dict[str, Any],
-        context: Optional[ConversationContext]
+        context: Optional[ConversationContext],
+        user_role: str = "cliente"
     ) -> Optional[str]:
         """Generate SQL query from natural language using LLM"""
         
@@ -625,7 +658,14 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
             schema_info = format_schema_for_llm(self.db)
             print(f"[CHATBOT] Schema info obtenido ({len(schema_info)} caracteres)")
             
-            prompt = f"""{SQL_AGENT_PROMPT}
+            # Incluir restricciones de rol en el prompt
+            role_restrictions = self._get_role_restrictions_prompt(user_role)
+            
+            prompt = f"""{CHATBOT_MAIN_PROMPT.format(user_role=user_role)}
+
+{role_restrictions}
+
+{SQL_AGENT_PROMPT}
 
 {schema_info}
 
@@ -635,11 +675,15 @@ Mantén la respuesta concisa, amigable e informativa. Responde SIEMPRE en españ
 PREGUNTA DEL USUARIO: {question}
 ═══════════════════════════════════════════════════════════════════════════════
 
-IMPORTANTE: Si la pregunta es sobre "cuántas cabinas están operativas/en alerta":
-- USA SOLO: SELECT COUNT(*) FROM cabina_estado_hist WHERE estado = 'operativa' (o 'alerta')
+CRÍTICO - CONSULTAS DE ESTADOS DE CABINAS:
+Si la pregunta es sobre "cuántas cabinas están operativas/en alerta/inusuales":
+- REGLA ABSOLUTA: USA SOLO la tabla 'cabina_estado_hist', NUNCA la tabla 'cabinas'
+- CORRECTO: SELECT COUNT(*) FROM cabina_estado_hist WHERE estado = 'operativa' (o 'alerta', 'inusual')
+- INCORRECTO: SELECT COUNT(*) FROM cabinas WHERE estado = 'operativa' (la columna 'estado' NO EXISTE en 'cabinas')
+- La tabla 'cabinas' tiene 'estado_actual', pero NO tiene 'estado'
 - NO uses JOIN con mediciones
 - NO uses m.estado_actual
-- NO agregues filtros de tiempo
+- NO agregues filtros de tiempo a menos que el usuario lo solicite explícitamente
 
 IMPORTANTE: Si la pregunta es sobre "últimas N mediciones" o "muéstrame mediciones":
 - USA SOLO: SELECT * FROM mediciones ORDER BY medicion_id DESC LIMIT N
@@ -649,30 +693,43 @@ IMPORTANTE: Si la pregunta es sobre "últimas N mediciones" o "muéstrame medici
 - NO uses m.cabina_id (mediciones NO tiene cabina_id, solo tiene sensor_id)
 - La relación correcta es: mediciones.sensor_id → sensores.sensor_id → sensores.cabina_id → cabinas.cabina_id
 
-Genera SOLO la consulta SQL (sin explicaciones). La consulta debe:
-1. Usar sintaxis PostgreSQL correcta
-2. Incluir JOINs apropiados si se necesitan múltiples tablas
-3. Filtrar por tiempo SOLO si el usuario explícitamente solicita "últimas X horas/días":
-   - Si pregunta "promedio de RMS" sin especificar tiempo: SELECT AVG(rms) FROM mediciones (SIN WHERE)
-   - Si pregunta "promedio de RMS de las últimas 24 horas": SELECT AVG(rms) FROM mediciones WHERE timestamp >= NOW() - INTERVAL '24 hours'
-   - CRÍTICO: NO agregues filtros de tiempo automáticamente si el usuario no los solicita
-4. Usar LIMIT solo cuando sea necesario:
-   - Si el usuario solicita "todos", "completo", "sin límite": NO uses LIMIT
-   - Para agregaciones (COUNT, SUM, AVG, etc.): NO uses LIMIT directamente con la función de agregación
-   - CRÍTICO: Para "promedio de las últimas N mediciones", usa SUBCONSULTA:
-     ✅ CORRECTO: SELECT AVG(columna) FROM (SELECT columna FROM tabla ORDER BY medicion_id DESC LIMIT N) AS subquery
-     ❌ INCORRECTO: SELECT AVG(columna) FROM tabla ORDER BY medicion_id DESC LIMIT N
-   - Para consultas exploratorias iniciales: LIMIT 100-1000 es razonable
-   - Para consultas específicas con WHERE: evalúa si LIMIT es necesario
-5. CRÍTICO - TIPOS DE DATOS: Usa los tipos correctos en comparaciones:
-   - codigo_interno es VARCHAR: usa comillas codigo_interno = '1' NO codigo_interno = 1
-   - estado_actual es VARCHAR: usa comillas estado_actual = 'operativo'
-   - sensor_id, cabina_id, medicion_id son INTEGER: NO uses comillas sensor_id = 1
-   - Valores numéricos (rms, kurtosis, etc.) son NUMERIC: NO uses comillas rms > 5.0
-6. Ser segura de ejecutar (solo SELECT)
-7. Si necesitas explorar la estructura, usa information_schema
+═══════════════════════════════════════════════════════════════════════════════
+INSTRUCCIONES CRÍTICAS PARA GENERAR SQL:
+═══════════════════════════════════════════════════════════════════════════════
 
-Consulta SQL:"""
+TU ÚNICA TAREA: Devolver UNA sola sentencia SQL de solo lectura (SELECT) para responder la pregunta.
+
+REGLAS ABSOLUTAS:
+1. Devuelve ÚNICAMENTE la sentencia SQL, sin explicaciones, sin markdown, sin comentarios, sin texto adicional.
+2. NO uses ```sql``` ni bloques de código.
+3. NO escribas "Here is the SQL query" ni ningún texto antes o después.
+4. NO uses múltiples sentencias ni punto y coma extra.
+5. NO agregues comentarios dentro del SQL.
+
+REQUISITOS TÉCNICOS:
+- Usa sintaxis PostgreSQL correcta
+- Solo SELECT (nunca DELETE, UPDATE, INSERT, etc.)
+- Incluye JOINs apropiados si se necesitan múltiples tablas
+- Filtra por tiempo SOLO si el usuario explícitamente solicita "últimas X horas/días"
+- Usa LIMIT solo cuando sea necesario
+- Usa tipos de datos correctos (VARCHAR con comillas, INTEGER sin comillas, NUMERIC sin comillas)
+
+EJEMPLOS DE FORMATO CORRECTO:
+✅ SELECT COUNT(*) FROM cabina_estado_hist WHERE estado = 'operativa';
+✅ SELECT AVG(rms) FROM mediciones;
+✅ SELECT * FROM mediciones ORDER BY medicion_id DESC LIMIT 10;
+
+EJEMPLOS DE FORMATO INCORRECTO:
+❌ "Here is the SQL: SELECT COUNT(*) FROM cabinas;"
+❌ ```sql\nSELECT COUNT(*) FROM cabinas;\n```
+❌ SELECT COUNT(*) FROM cabinas; -- This counts cabins
+❌ SELECT COUNT(*) FROM cabinas; SELECT * FROM mediciones;
+
+═══════════════════════════════════════════════════════════════════════════════
+
+PREGUNTA DEL USUARIO: {question}
+
+GENERA SOLO LA SENTENCIA SQL (sin nada más):"""
             
             print("[CHATBOT] Invocando LLM para generar consulta SQL...")
             from langchain_core.messages import HumanMessage, SystemMessage
@@ -694,7 +751,7 @@ Consulta SQL:"""
             print(f"[CHATBOT] Validando tipo de consulta generada...")
             is_valid_type, type_error = self._validate_query_type(sql_query)
             if not is_valid_type:
-                print(f"[CHATBOT] ⚠️  ERROR: {type_error}")
+                print(f"[CHATBOT] [WARNING] ERROR: {type_error}")
                 print(f"[CHATBOT] Consulta bloqueada por seguridad")
                 return None
             
@@ -749,42 +806,46 @@ Consulta SQL:"""
     
     def _clean_sql_response(self, llm_response: str) -> str:
         """
-        Limpiar respuesta del LLM sin romper la consulta completa.
-        Busca cualquier operación SQL (SELECT, DELETE, etc.) y mantiene la consulta completa.
+        Limpiar respuesta del LLM para extraer SOLO la sentencia SQL.
+        Elimina todo el texto extra, markdown, explicaciones, etc.
         """
         # Remover markdown primero
         cleaned = llm_response.replace("```sql", "").replace("```", "").strip()
         
-        # Buscar cualquier operación SQL (no solo SELECT)
-        sql_pattern = r'\b(SELECT|DELETE|UPDATE|INSERT|WITH|CREATE|ALTER|DROP|TRUNCATE)\b'
+        # Buscar SELECT (la única operación permitida)
+        sql_pattern = r'\bSELECT\b'
         match = re.search(sql_pattern, cleaned, re.IGNORECASE)
         
         if match:
             start_index = match.start()
             sql_query = cleaned[start_index:]
             
-            # Encontrar el final de la consulta (último punto y coma o fin de línea)
-            # Buscar el último punto y coma que no esté dentro de comillas o paréntesis
+            # Encontrar el final de la consulta (último punto y coma)
             semicolon_pos = sql_query.rfind(';')
             if semicolon_pos != -1:
                 sql_query = sql_query[:semicolon_pos + 1]
             else:
-                # Si no hay punto y coma, buscar el final lógico
-                # Eliminar líneas que parezcan explicaciones
+                # Si no hay punto y coma, tomar hasta la primera línea que no parezca SQL
                 lines = sql_query.split('\n')
                 cleaned_lines = []
                 for line in lines:
                     line = line.strip()
-                    if line and not line.lower().startswith(('here', 'this', 'the', 'query', 'answer', 'esta', 'esta consulta')):
+                    # Detener si encontramos texto que no parece SQL
+                    if line and line.lower().startswith(('here', 'this', 'the', 'query', 'answer', 'esta', 'esta consulta', 'note:', 'important:')):
+                        break
+                    if line:
                         cleaned_lines.append(line)
                 sql_query = ' '.join(cleaned_lines)
+                # Agregar punto y coma si falta
+                if not sql_query.endswith(';'):
+                    sql_query += ';'
             
-            print(f"[CHATBOT] Operación SQL encontrada: {match.group(1)} en posición {start_index}")
-            print(f"[CHATBOT] Limpiando respuesta (removiendo markdown y explicaciones)...")
+            print(f"[CHATBOT] SELECT encontrado en posición {start_index}")
+            print(f"[CHATBOT] Limpiando respuesta (removiendo texto extra)...")
             return sql_query.strip()
         
-        # Si no se encuentra operación SQL, devolver tal cual (será rechazada en validación)
-        print(f"[CHATBOT] ADVERTENCIA: No se encontró operación SQL en la respuesta del LLM")
+        # Si no se encuentra SELECT, devolver tal cual (será rechazada en validación)
+        print(f"[CHATBOT] ADVERTENCIA: No se encontró SELECT en la respuesta del LLM")
         return cleaned
     
     def _validate_query_type(self, sql_query: str) -> tuple[bool, str]:
@@ -809,8 +870,63 @@ Consulta SQL:"""
         
         return True, "Consulta válida"
     
+    def _format_simple_numeric_response(self, question: str, results: Dict[str, Any]) -> str:
+        """
+        Formatea respuestas numéricas simples (1 fila, 1 columna) sin usar LLM.
+        Optimización para respuestas rápidas.
+        """
+        if not results.get("data") or len(results["data"]) == 0:
+            return "No hay datos disponibles para esa consulta."
+        
+        first_row = results["data"][0]
+        columns = results.get("columns", [])
+        
+        if len(columns) != 1:
+            # Fallback si hay más de una columna
+            return self.query_builder.format_results_as_text(results)
+        
+        column_name = columns[0]
+        value = first_row.get(column_name)
+        question_lower = question.lower()
+        
+        # Formatear según el tipo de columna y pregunta
+        if value is None:
+            return "No hay datos disponibles para calcular ese valor."
+        
+        # Para COUNT
+        if 'count' in column_name.lower() or 'total' in column_name.lower() or 'cantidad' in column_name.lower():
+            if value == 0:
+                return "No se encontraron registros que cumplan esa condición."
+            else:
+                return f"Hay {value} registros que cumplen esa condición."
+        
+        # Para AVG/promedio
+        if 'avg' in column_name.lower() or 'promedio' in column_name.lower():
+            if 'promedio' in question_lower or 'average' in question_lower:
+                return f"El promedio solicitado es {value:.4f}." if isinstance(value, (int, float)) else f"El promedio solicitado es {value}."
+            else:
+                return f"El resultado es: {value:.4f}." if isinstance(value, (int, float)) else f"El resultado es: {value}."
+        
+        # Para MAX
+        if 'max' in column_name.lower() or 'maximo' in column_name.lower():
+            return f"El valor máximo es {value:.4f}." if isinstance(value, (int, float)) else f"El valor máximo es {value}."
+        
+        # Para MIN
+        if 'min' in column_name.lower() or 'minimo' in column_name.lower():
+            return f"El valor mínimo es {value:.4f}." if isinstance(value, (int, float)) else f"El valor mínimo es {value}."
+        
+        # Para SUM
+        if 'sum' in column_name.lower() or 'suma' in column_name.lower():
+            return f"La suma es {value:.4f}." if isinstance(value, (int, float)) else f"La suma es {value}."
+        
+        # Respuesta genérica
+        if isinstance(value, (int, float)):
+            return f"El resultado es: {value:.4f}."
+        else:
+            return f"El resultado es: {value}."
+    
     def _format_data_response(self, question: str, results: Dict[str, Any]) -> str:
-        """Format query results into a natural language response"""
+        """Format query results into a natural language response using LLM"""
         
         if not self.llm_client:
             # Simple formatting without LLM
@@ -819,48 +935,41 @@ Consulta SQL:"""
         try:
             results_text = self.query_builder.format_results_as_text(results)
             
-            # Contexto adicional para interpretar mejor los resultados
-            interpretation_guidance = ""
+            # Preparar datos para el prompt
+            rows = results.get("data", [])
+            columns = results.get("columns", [])
+            row_count = results.get("row_count", 0)
             
-            # Detectar si hay valores NULL en agregaciones (AVG, MAX, MIN, etc.)
-            if results.get("row_count") == 1 and results.get("data"):
-                first_row = results["data"][0]
-                has_null_aggregation = any(
-                    key.lower() in ['avg', 'max', 'min', 'sum', 'promedio', 'maximo', 'minimo', 'suma'] 
-                    and value is None 
-                    for key, value in first_row.items()
-                )
-                if has_null_aggregation:
-                    interpretation_guidance = "\nIMPORTANTE: El resultado contiene NULL, lo que significa que no hay datos disponibles para calcular esta agregación. Indica esto claramente al usuario."
-            
-            if results.get("row_count") == 1 and results.get("data"):
-                # Si hay una sola fila con un COUNT u otra agregación, interpretarla correctamente
-                first_row = results["data"][0]
-                for key, value in first_row.items():
-                    if 'count' in key.lower() or 'total' in key.lower() or 'cantidad' in key.lower():
-                        interpretation_guidance = f"\n\nIMPORTANTE: El valor '{value}' en la columna '{key}' representa el resultado de una consulta de conteo o agregación. Si el valor es 0, significa que NO hay registros que cumplan la condición. Si el valor es mayor a 0, ese es el número real de registros encontrados."
-                    elif value == 0 or value == 0.0:
-                        interpretation_guidance = f"\n\nIMPORTANTE: El valor {value} en '{key}' indica que NO se encontraron registros que cumplan la condición. No asumas que esto significa que el sistema está fuera de servicio - simplemente no hay datos que cumplan los criterios específicos de la consulta."
-            
-            prompt = f"""Basándote en los siguientes resultados de la consulta, proporciona una respuesta clara y precisa en lenguaje natural a la pregunta del usuario.
+            # Construir prompt mejorado (sin mencionar roles, tipos internos, etc.)
+            prompt = f"""Eres un formateador de respuestas para un sistema de monitoreo.
 
-Pregunta del Usuario: {question}
+Tu única tarea es construir una respuesta breve en español basada EXCLUSIVAMENTE en los resultados de una consulta SQL ya ejecutada.
 
-Resultados de la Consulta:
-{results_text}
-{interpretation_guidance}
+Pregunta del usuario: {question}
 
-IMPORTANTE:
-- Si los resultados muestran un COUNT de 0, simplemente di que no se encontraron registros que cumplan esa condición específica, NO digas que el sistema está fuera de servicio o que hay un problema.
-- Si hay valores numéricos, úsalos directamente en tu respuesta.
-- Sé preciso y no hagas suposiciones sobre el estado general del sistema basándote solo en una consulta específica.
-- Responde SIEMPRE en español.
-- Sé conciso y directo."""
+Resultados de la consulta:
+- Filas encontradas: {row_count}
+- Columnas: {', '.join(columns) if columns else 'Ninguna'}
+- Datos: {results_text}
+
+REGLAS ESTRICTAS:
+1. Responde SOLO con información que esté en los resultados proporcionados.
+2. NO generes nuevas consultas SQL.
+3. NO menciones tipos internos de consulta (tipo A, tipo B, etc.).
+4. NO menciones el rol del usuario.
+5. NO expliques el proceso interno.
+6. NO inventes datos que no estén en los resultados.
+7. Si no hay filas (row_count = 0), di claramente: "No hay datos disponibles para esa consulta."
+8. Si hay valores NULL, indica que no hay datos disponibles.
+9. Responde máximo en 2-3 frases.
+10. Sé breve, directo y preciso.
+
+Responde en español:"""
             
             from langchain_core.messages import HumanMessage, SystemMessage
             
             messages = [
-                SystemMessage(content=ANALYSIS_PROMPT),
+                SystemMessage(content="Eres un formateador de respuestas. Tu única tarea es convertir resultados de consultas SQL en respuestas breves y claras en español."),
                 HumanMessage(content=prompt)
             ]
             
@@ -1031,54 +1140,215 @@ Genera un reporte completo que aborde la solicitud del usuario."""
         except Exception as e:
             return f"Report:\n\nSummary: {json.dumps(summary)}\n\nHealth: {json.dumps(health_data)}"
     
+    def _get_role_restrictions_prompt(self, user_role: str) -> str:
+        """Genera un prompt con las restricciones específicas del rol"""
+        user_role_lower = user_role.lower()
+        
+        if user_role_lower == "cliente":
+            return """
+RESTRICCIONES ESPECÍFICAS PARA ROL CLIENTE:
+- Solo puedes generar consultas con agregaciones (AVG, COUNT, SUM, MAX, MIN)
+- NO generes SELECT * sin agregaciones
+- NO uses tablas: telemetria_cruda, audit_log, auditoria, usuarios, modelos_ml
+- Limita resultados a resúmenes generales
+- Si el usuario pide detalles, sugiere una consulta agregada alternativa
+"""
+        elif user_role_lower == "operador":
+            return """
+RESTRICCIONES ESPECÍFICAS PARA ROL OPERADOR:
+- Limita consultas a datos recientes (últimas 24 horas)
+- NO generes consultas sobre históricos masivos
+- NO uses tablas: audit_log, auditoria, usuarios
+- Enfócate en estado actual y alertas
+"""
+        elif user_role_lower == "analista":
+            return """
+PERMISOS PARA ROL ANALISTA:
+- Acceso a mediciones, telemetría, sensores, cabinas, predicciones, modelos
+- Puedes consultar históricos grandes
+- NO muestres datos sensibles de usuarios (password_hash, tokens)
+"""
+        else:  # admin
+            return """
+PERMISOS PARA ROL ADMIN:
+- Acceso amplio a todas las tablas técnicas
+- Puedes consultar mediciones completas, telemetría, predicciones, modelos ML, auditoría parcial
+- NUNCA muestres contraseñas, hashes, tokens o información de seguridad
+"""
+    
+    def _check_role_access(self, question: str, user_role: str) -> Dict[str, Any]:
+        """
+        Verifica si el usuario tiene permisos para realizar la consulta según su rol.
+        Returns: {"allowed": bool, "message": str}
+        """
+        question_lower = question.lower()
+        user_role_lower = user_role.lower()
+        
+        # Restricciones para rol CLIENTE
+        if user_role_lower == "cliente":
+            restricted_keywords = [
+                "telemetria_cruda", "telemetría cruda", "raw telemetry",
+                "auditoria", "auditoría", "audit",
+                "usuarios", "users", "password", "contraseña",
+                "modelos_ml", "modelos ml", "model details",
+                "hash", "token", "credenciales"
+            ]
+            
+            # Verificar si pregunta por datos detallados (no agregados)
+            detail_keywords = [
+                "muéstrame todas las", "show all", "todas las mediciones",
+                "cada medición", "por fila", "detalle de"
+            ]
+            
+            for keyword in restricted_keywords:
+                if keyword in question_lower:
+                    return {
+                        "allowed": False,
+                        "message": "Por tu rol de cliente no puedo mostrarte ese nivel de detalle, pero sí puedo darte un resumen general."
+                    }
+            
+            for keyword in detail_keywords:
+                if keyword in question_lower:
+                    return {
+                        "allowed": False,
+                        "message": "Por tu rol de cliente no puedo mostrarte ese nivel de detalle, pero sí puedo darte un resumen general."
+                    }
+        
+        # Restricciones para rol OPERADOR
+        elif user_role_lower == "operador":
+            restricted_keywords = [
+                "histórico completo", "all history", "todos los registros históricos",
+                "auditoria", "auditoría", "audit",
+                "usuarios", "users", "password", "contraseña"
+            ]
+            
+            for keyword in restricted_keywords:
+                if keyword in question_lower:
+                    return {
+                        "allowed": False,
+                        "message": "Por tu rol de operador no puedes acceder a históricos masivos ni a información de auditoría. Puedo ayudarte con datos recientes y alertas actuales."
+                    }
+        
+        # ADMIN y ANALISTA tienen acceso amplio (pero nunca a contraseñas/hashes)
+        if "password" in question_lower or "contraseña" in question_lower or "hash" in question_lower:
+            return {
+                "allowed": False,
+                "message": "No puedo mostrar información de seguridad como contraseñas o hashes, independientemente del rol."
+            }
+        
+        return {"allowed": True, "message": "Acceso permitido"}
+    
+    def _detect_query_type(self, question: str) -> str:
+        """
+        Detecta el tipo de pregunta de forma clara y precisa.
+        Returns: 'informational', 'data', o 'unknown' (que se trata como 'data')
+        """
+        question_lower = question.lower().strip()
+        
+        # REGLAS PARA PREGUNTAS INFORMACIONALES (NO requieren SQL)
+        informational_patterns = [
+            # Patrones de "qué es" / "what is"
+            'que es', 'qué es', 'what is',
+            # Patrones de "qué significa" / "what means"
+            'que significa', 'qué significa', 'what means', 'what does mean',
+            # Patrones de explicación
+            'explica', 'explícame', 'explicame', 'explain', 'describe',
+            # Patrones de funcionamiento
+            'como funciona', 'cómo funciona', 'how does', 'how works',
+            # Patrones específicos de RMS u otros términos técnicos
+            'que significa rms', 'qué significa rms', 'what means rms',
+            'que es rms', 'qué es rms', 'what is rms',
+            # Patrones de ayuda general
+            'help', 'ayuda', 'que hace', 'qué hace'
+        ]
+        
+        # Verificar si es informacional
+        for pattern in informational_patterns:
+            if pattern in question_lower:
+                print(f"[CHATBOT] Patrón informacional detectado: '{pattern}'")
+                return 'informational'
+        
+        # REGLAS PARA PREGUNTAS DE DATOS (SÍ requieren SQL)
+        data_patterns = [
+            # Patrones de mostrar/listar
+            'muéstrame', 'muestrame', 'muestra', 'show', 'show me',
+            'dame', 'dame', 'lista', 'listame', 'list', 'list me',
+            # Patrones de conteo
+            'cuántas', 'cuantos', 'cuántos', 'how many', 'how much',
+            # Patrones de promedios/agregaciones
+            'cuál es el promedio', 'cual es el promedio', 'promedio de',
+            'average', 'avg', 'promedio',
+            # Patrones temporales
+            'últimas', 'ultimas', 'primeras', 'last', 'first',
+            'histórico', 'historico', 'historical',
+            # Patrones de comparación/análisis de datos
+            'cuál es', 'cual es', 'what is the', 'what are the',
+            'dónde', 'donde', 'where', 'cuando', 'cuándo', 'when'
+        ]
+        
+        # Verificar si es de datos
+        for pattern in data_patterns:
+            if pattern in question_lower:
+                print(f"[CHATBOT] Patrón de datos detectado: '{pattern}'")
+                return 'data'
+        
+        # Si no coincide con ningún patrón claro, tratar como 'data' (fallback)
+        print(f"[CHATBOT] No se detectó patrón específico, tratando como 'data' (fallback)")
+        return 'data'
+    
+    def _apply_role_filters_to_sql(self, sql_query: str, user_role: str) -> str:
+        """
+        Aplica filtros adicionales a la consulta SQL según el rol del usuario.
+        """
+        user_role_lower = user_role.lower()
+        sql_upper = sql_query.upper()
+        
+        # Para CLIENTE: solo agregaciones, no filas individuales
+        if user_role_lower == "cliente":
+            # Si no hay agregación (AVG, COUNT, SUM, MAX, MIN), agregar LIMIT muy restrictivo
+            if not any(func in sql_upper for func in ["AVG(", "COUNT(", "SUM(", "MAX(", "MIN("]):
+                if "LIMIT" not in sql_upper:
+                    # Agregar LIMIT 10 para clientes
+                    sql_query = sql_query.rstrip(";")
+                    sql_query += " LIMIT 10;"
+        
+        # Para OPERADOR: limitar a datos recientes (últimas 24 horas)
+        elif user_role_lower == "operador":
+            if "WHERE" not in sql_upper and "mediciones" in sql_upper:
+                # Agregar filtro de tiempo si no existe
+                sql_query = sql_query.rstrip(";")
+                if "ORDER BY" in sql_upper:
+                    sql_query = sql_query.replace("ORDER BY", "WHERE timestamp >= NOW() - INTERVAL '24 hours' ORDER BY")
+                else:
+                    sql_query += " WHERE timestamp >= NOW() - INTERVAL '24 hours'"
+                sql_query += ";"
+        
+        return sql_query
+    
     def get_capabilities(self) -> Dict[str, Any]:
         """Return information about chatbot capabilities"""
-        if self.role_info and self.role_info.name == "ciudadano":
-            return {
-                "role": self.role_info.name,
-                "capabilities": [
-                    "Consultar el estado general del servicio de teleférico",
-                    "Recibir avisos públicos y recomendaciones de uso",
-                    "Conocer los roles oficiales y su propósito",
-                ],
-                "supported_queries": [
-                    "¿El servicio del teleférico está operando con normalidad?",
-                    "¿Cuántas cabinas están disponibles para pasajeros?",
-                    "¿Qué roles existen en UrbanFlow y qué hace cada uno?",
-                    "¿Qué recomendaciones de seguridad debo seguir?",
-                ],
-                "restrictions": (
-                    "No se exponen datos personales ni información técnica avanzada. "
-                    "Para detalles operativos se requiere un rol autorizado."
-                ),
-                "llm_provider": self.llm_provider,
-                "model_name": self.model_name,
-                "ml_analysis_enabled": False,
-            }
-
         return {
-            "role": self.role_info.name if self.role_info else self.user_role,
             "capabilities": [
-                "Consultar datos históricos y en tiempo real de sensores",
-                "Analizar salud del sistema y rendimiento operativo",
-                "Generar insights predictivos y reportes técnicos",
-                "Responder preguntas sobre operación y mantenimiento",
-                "Identificar tendencias, anomalías y cabinas en riesgo",
+                "Query real-time and historical sensor data",
+                "Analyze system health and performance",
+                "Generate predictive maintenance insights",
+                "Create comprehensive reports",
+                "Answer questions about cable car operations",
+                "Identify trends and anomalies"
             ],
             "supported_queries": [
-                "¿Cuántas cabinas están en alerta actualmente?",
-                "Muéstrame las últimas mediciones del sensor 1",
-                "Promedio de RMS de las últimas 24 horas",
-                "Genera un reporte de salud del sistema",
-                "¿Qué cabinas necesitan mantenimiento preventivo?",
+                "How many cabins are in alert status?",
+                "Show me recent measurements from sensor 1",
+                "What's the average RMS value today?",
+                "Which sensors have high vibration levels?",
+                "Generate a system health report",
+                "Predict which cabins need maintenance",
+                "Compare performance this week vs last week"
             ],
-            "restrictions": (
-                "El chatbot no accede a datos personales ni a la tabla de usuarios. "
-                "Toda consulta se valida contra políticas de seguridad."
-            ),
             "llm_provider": self.llm_provider,
             "model_name": self.model_name,
             "ml_analysis_enabled": self.enable_ml_analysis,
+            "role_based_access": True
         }
 
 
